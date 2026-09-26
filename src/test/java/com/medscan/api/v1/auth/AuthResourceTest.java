@@ -69,7 +69,7 @@ class AuthResourceTest {
     void getCurrentUserReturnsProfile() {
         VerifiedTenantIdentity identity = new VerifiedTenantIdentity(
                 SeedUserRegistry.TENANT_HOSPITAL,
-                UUID.fromString("10000000-0000-0000-0000-000000000002"),
+                UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0"),
                 "doctor@medscan.org",
                 Set.of("DOCTOR"),
                 Set.of("patient:search", "consultation:write"));

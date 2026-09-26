@@ -6,18 +6,66 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "base_url", "value": "http://localhost:8080/medscan/api", "type": "string" },
-    { "key": "bearer_token", "value": "", "type": "string" },
-    { "key": "doctor_token", "value": "", "type": "string" },
-    { "key": "patient_token", "value": "", "type": "string" },
-    { "key": "radiologist_token", "value": "", "type": "string" },
-    { "key": "nurse_token", "value": "", "type": "string" },
-    { "key": "labtech_token", "value": "", "type": "string" },
-    { "key": "pharmacist_token", "value": "", "type": "string" },
-    { "key": "delivery_token", "value": "", "type": "string" },
-    { "key": "tenantadmin_token", "value": "", "type": "string" },
-    { "key": "superadmin_token", "value": "", "type": "string" },
-    { "key": "auditor_token", "value": "", "type": "string" }
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/medscan/api",
+      "type": "string"
+    },
+    {
+      "key": "bearer_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "doctor_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "patient_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "radiologist_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "nurse_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "labtech_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pharmacist_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "delivery_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenantadmin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "auditor_token",
+      "value": "",
+      "type": "string"
+    }
   ],
   "item": [
     {
@@ -28,7 +76,16 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/health", "host": ["{{base_url}}"], "path": ["v1", "health"] },
+            "url": {
+              "raw": "{{base_url}}/v1/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
             "description": "Retourne le statut d'accessibilité du service sans données sensibles."
           }
         }
@@ -39,222 +96,422 @@
       "item": [
         {
           "name": "01. Connexion — Médecin (DOCTOR)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('doctor_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('doctor_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"doctor@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"doctor@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "02. Connexion — Patient (PATIENT)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('patient_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('patient_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"patient@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"patient@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "03. Connexion — Radiologue (RADIOLOGIST)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('radiologist_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('radiologist_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"radiologist@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"radiologist@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "04. Connexion — Infirmier (NURSE)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('nurse_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('nurse_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"nurse@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"nurse@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "05. Connexion — Technicien Labo (LAB_TECHNICIAN)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('labtech_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('labtech_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"labtech@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"labtech@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "06. Connexion — Pharmacien (PHARMACIST)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('pharmacist_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('pharmacist_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"pharmacist@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"pharmacist@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "07. Connexion — Livreur (DELIVERY_AGENT)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('delivery_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('delivery_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"delivery@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"delivery@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "08. Connexion — Admin Tenant (TENANT_ADMIN)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('tenantadmin_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('tenantadmin_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"tenantadmin@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"tenantadmin@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "09. Connexion — Super Admin (SUPER_ADMIN)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('superadmin_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('superadmin_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"superadmin@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"superadmin@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
           "name": "10. Connexion — Auditeur DPO (AUDITOR)",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "if (pm.response.code === 200) {",
-                "    var json = pm.response.json();",
-                "    pm.collectionVariables.set('auditor_token', json.accessToken);",
-                "    pm.collectionVariables.set('bearer_token', json.accessToken);",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('auditor_token', json.accessToken);",
+                  "    pm.collectionVariables.set('bearer_token', json.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"auditor@medscan.org\",\n  \"password\": \"Password123!\"\n}" },
-            "url": { "raw": "{{base_url}}/v1/auth/login", "host": ["{{base_url}}"], "path": ["v1", "auth", "login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"auditor@medscan.org\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
@@ -262,11 +519,27 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{bearer_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bearer_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/auth/me", "host": ["{{base_url}}"], "path": ["v1", "auth", "me"] }
+            "url": {
+              "raw": "{{base_url}}/v1/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "me"
+              ]
+            }
           }
         }
       ]
@@ -276,369 +549,878 @@
       "item": [
         {
           "name": "Portail Pharmacie (GET /v1/portal/pharmacist)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('pharmacist_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'pharmacist@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('pharmacist_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('pharmacist_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'pharmacist@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('pharmacist_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{pharmacist_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{pharmacist_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/pharmacist", "host": ["{{base_url}}"], "path": ["v1", "portal", "pharmacist"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/pharmacist",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "pharmacist"
+              ]
+            }
           }
         },
         {
           "name": "Portail Médecin (GET /v1/portal/doctor)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('doctor_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'doctor@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('doctor_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('doctor_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'doctor@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('doctor_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{doctor_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{doctor_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/doctor", "host": ["{{base_url}}"], "path": ["v1", "portal", "doctor"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/doctor",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "doctor"
+              ]
+            }
           }
         },
         {
           "name": "Portail Patient (GET /v1/portal/patient)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('patient_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'patient@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('patient_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('patient_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'patient@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('patient_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{patient_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{patient_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/patient", "host": ["{{base_url}}"], "path": ["v1", "portal", "patient"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/patient",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "patient"
+              ]
+            }
           }
         },
         {
           "name": "Portail Radiologie (GET /v1/portal/radiologist)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('radiologist_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'radiologist@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('radiologist_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('radiologist_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'radiologist@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('radiologist_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{radiologist_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{radiologist_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/radiologist", "host": ["{{base_url}}"], "path": ["v1", "portal", "radiologist"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/radiologist",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "radiologist"
+              ]
+            }
           }
         },
         {
           "name": "Portail Soins Infirmiers (GET /v1/portal/nurse)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('nurse_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'nurse@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('nurse_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('nurse_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'nurse@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('nurse_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{nurse_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{nurse_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/nurse", "host": ["{{base_url}}"], "path": ["v1", "portal", "nurse"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/nurse",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "nurse"
+              ]
+            }
           }
         },
         {
           "name": "Portail Laboratoire (GET /v1/portal/lab-technician)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('labtech_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'labtech@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('labtech_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('labtech_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'labtech@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('labtech_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{labtech_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{labtech_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/lab-technician", "host": ["{{base_url}}"], "path": ["v1", "portal", "lab-technician"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/lab-technician",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "lab-technician"
+              ]
+            }
           }
         },
         {
           "name": "Portail Livraison (GET /v1/portal/delivery)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('delivery_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'delivery@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('delivery_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('delivery_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'delivery@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('delivery_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{delivery_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{delivery_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/delivery", "host": ["{{base_url}}"], "path": ["v1", "portal", "delivery"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/delivery",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "delivery"
+              ]
+            }
           }
         },
         {
           "name": "Portail Admin Tenant (GET /v1/portal/tenant-admin)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('tenantadmin_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'tenantadmin@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('tenantadmin_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('tenantadmin_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'tenantadmin@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('tenantadmin_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{tenantadmin_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tenantadmin_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/tenant-admin", "host": ["{{base_url}}"], "path": ["v1", "portal", "tenant-admin"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/tenant-admin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "tenant-admin"
+              ]
+            }
           }
         },
         {
           "name": "Portail Super Admin (GET /v1/portal/super-admin)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('superadmin_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'superadmin@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('superadmin_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('superadmin_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'superadmin@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('superadmin_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{superadmin_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{superadmin_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/super-admin", "host": ["{{base_url}}"], "path": ["v1", "portal", "super-admin"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/super-admin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "super-admin"
+              ]
+            }
           }
         },
         {
           "name": "Portail Audit DPO (GET /v1/portal/auditor)",
-          "event": [{
-            "listen": "prerequest",
-            "script": {
-              "exec": [
-                "if (!pm.collectionVariables.get('auditor_token')) {",
-                "    pm.sendRequest({",
-                "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
-                "        method: 'POST',",
-                "        header: { 'Content-Type': 'application/json' },",
-                "        body: { mode: 'raw', raw: JSON.stringify({ username: 'auditor@medscan.org', password: 'Password123!' }) }",
-                "    }, function (err, res) {",
-                "        if (!err && res.code === 200) {",
-                "            pm.collectionVariables.set('auditor_token', res.json().accessToken);",
-                "        }",
-                "    });",
-                "}"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.collectionVariables.get('auditor_token')) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/v1/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'auditor@medscan.org', password: 'Password123!' }) }",
+                  "    }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            pm.collectionVariables.set('auditor_token', res.json().accessToken);",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{auditor_token}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{auditor_token}}",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/auditor", "host": ["{{base_url}}"], "path": ["v1", "portal", "auditor"] }
+            "url": {
+              "raw": "{{base_url}}/v1/portal/auditor",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "auditor"
+              ]
+            }
           }
         }
       ]
     },
     {
-      "name": "04 - Tests Négatifs de Sécurité",
+      "name": "04 - Dossier Patient & Clinique (MOD-03)",
       "item": [
         {
-          "name": "Rejet 403 ATTENDU — L'Auditeur tente d'accéder au Portail Pharmacie",
+          "name": "01. Rechercher Patients (Médecin)",
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{auditor_token}}", "type": "string" }]
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/patients?q=Fatou",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Fatou"
+                }
+              ]
             },
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/pharmacist", "host": ["{{base_url}}"], "path": ["v1", "portal", "pharmacist"] },
-            "description": "L'auditeur n'a pas le rôle PHARMACIST, le système doit refuser avec 403 Forbidden."
+            "description": "Recherche multi-critères filtrée par le tenant de l'établissement."
           }
         },
         {
-          "name": "Rejet 403 ATTENDU — Le Patient tente d'accéder au Portail Médecin",
+          "name": "02. Consulter Dossier Médical Complet (Médecin)",
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{patient_token}}", "type": "string" }]
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/patients/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"
+              ]
             },
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/doctor", "host": ["{{base_url}}"], "path": ["v1", "portal", "doctor"] },
-            "description": "Le patient n'a pas le rôle DOCTOR, le système doit refuser avec 403 Forbidden."
+            "description": "Consultation du dossier longitudinal : profil, constantes, consultations et ordonnances."
           }
         },
         {
-          "name": "Rejet 401 ATTENDU — Appel sans jeton Bearer",
+          "name": "03. Créer Nouveau Patient (Médecin)",
           "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{base_url}}/v1/portal/doctor", "host": ["{{base_url}}"], "path": ["v1", "portal", "doctor"] }
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nationalId\": \"BFA-2026-778899\",\n  \"firstName\": \"Boukary\",\n  \"lastName\": \"Kindo\",\n  \"birthDate\": \"1985-03-22\",\n  \"gender\": \"M\",\n  \"bloodGroup\": \"B+\",\n  \"phone\": \"+226 70 00 11 22\",\n  \"emergencyContact\": \"Mariam Kindo (+226 76 33 44 55)\",\n  \"allergies\": [\n    \"Iode\"\n  ],\n  \"chronicConditions\": [\n    \"Ulc\\u00e8re gastrique\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/patients",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients"
+              ]
+            }
           }
         },
         {
-          "name": "Rejet 401 ATTENDU — Appel avec faux jeton",
+          "name": "04. Enregistrer Constantes Vitales (Infirmier)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurse_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"systolicBp\": 125,\n  \"diastolicBp\": 82,\n  \"heartRate\": 76,\n  \"temperature\": 37.1,\n  \"weightKg\": 68.5,\n  \"bloodGlucose\": 1.02\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/patients/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e/vitals",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+                "vitals"
+              ]
+            }
+          }
+        },
+        {
+          "name": "05. Enregistrer Consultation Clinique (Médecin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chiefComplaint\": \"C\\u00e9phal\\u00e9es et fatigue persistante\",\n  \"examinationNotes\": \"Examen neurologique normal. Tension art\\u00e9rielle contr\\u00f4l\\u00e9e.\",\n  \"diagnosis\": \"C\\u00e9phal\\u00e9e de tension par surmenage\",\n  \"treatmentPlan\": \"Repos pr\\u00e9conis\\u00e9, parac\\u00e9tamol en cas de crise.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/patients/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e/consultations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+                "consultations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "06. Mon Carnet de Santé (Patient)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer faux.token.falsifie" }],
-            "url": { "raw": "{{base_url}}/v1/portal/doctor", "host": ["{{base_url}}"], "path": ["v1", "portal", "doctor"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/patient/my-record",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patient",
+                "my-record"
+              ]
+            },
+            "description": "Accès direct du patient connecté à son historique médical personnel."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Ordonnances & Pharmacie (MOD-08)",
+      "item": [
+        {
+          "name": "01. Émettre une Ordonnance Numérique (Médecin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"medicationName\": \"Amoxicilline 500mg\",\n  \"dosage\": \"1 g\\u00e9lule\",\n  \"frequency\": \"3 fois par jour\",\n  \"durationDays\": 7,\n  \"instructions\": \"Prendre au milieu des repas avec un grand verre d'eau\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/patients/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e/prescriptions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+                "prescriptions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "02. Rechercher Ordonnance par Code (Pharmacien)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pharmacist_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/prescriptions/RX-2026-0042",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "prescriptions",
+                "RX-2026-0042"
+              ]
+            },
+            "description": "Vérification du code d'ordonnance ou scan du QR code sécurisé."
+          }
+        },
+        {
+          "name": "03. Valider Dispensation en Pharmacie (Pharmacien)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pharmacist_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/prescriptions/RX-2026-0042/dispense",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "prescriptions",
+                "RX-2026-0042",
+                "dispense"
+              ]
+            },
+            "description": "Délivrance officielle et clôture de l'ordonnance (anti-réutilisation)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Dérogation d Urgence Break-Glass (MOD-04)",
+      "item": [
+        {
+          "name": "01. Tentative Accès Patient Autre Hôpital (Bloqué 403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/patients/dababb25-8dc9-402c-b527-15d9a4b1f380",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "dababb25-8dc9-402c-b527-15d9a4b1f380"
+              ]
+            },
+            "description": "Doit retourner 403 Forbidden car le patient appartient à un autre établissement."
+          }
+        },
+        {
+          "name": "02. Déclencher Accès d Urgence Vitale (Break-Glass)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Patient inconscient admis aux urgences d\\u00e9choquage avec pronostic vital engag\\u00e9\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/patients/dababb25-8dc9-402c-b527-15d9a4b1f380/break-glass",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "dababb25-8dc9-402c-b527-15d9a4b1f380",
+                "break-glass"
+              ]
+            }
+          }
+        },
+        {
+          "name": "03. Re-tentative Accès après Break-Glass (Succès 200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/patients/dababb25-8dc9-402c-b527-15d9a4b1f380",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "dababb25-8dc9-402c-b527-15d9a4b1f380"
+              ]
+            },
+            "description": "L'accès est désormais déverrouillé et l'événement est consigné au journal DPO."
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Piste d Audit & Conformité DPO (MOD-11)",
+      "item": [
+        {
+          "name": "01. Consulter Journal d Audit (Auditeur DPO)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auditor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/audit/logs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "audit",
+                "logs"
+              ]
+            },
+            "description": "Journal d'audit append-only des accès aux données de santé."
           }
         }
       ]

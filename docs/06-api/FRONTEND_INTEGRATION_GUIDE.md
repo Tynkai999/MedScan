@@ -142,7 +142,7 @@ Authentifie un acteur et retourne le couple de jetons JWT (Access + Refresh) ain
   "tokenType": "Bearer",
   "expiresIn": 900,
   "user": {
-    "id": "10000000-0000-0000-0000-000000000002",
+    "id": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
     "username": "doctor@medscan.org",
     "email": "doctor@medscan.org",
     "displayName": "Dr. Aminata Diallo",
@@ -179,7 +179,7 @@ Retourne les données d'identité et les habilitations de l'acteur déduites du 
 - **Réponse Succès (200 OK)** :
 ```json
 {
-  "id": "10000000-0000-0000-0000-000000000002",
+  "id": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
   "username": "doctor@medscan.org",
   "email": "doctor@medscan.org",
   "displayName": "Dr. Aminata Diallo",
@@ -216,7 +216,7 @@ Permet d'obtenir un nouvel `accessToken` sans redemander la saisie du mot de pas
   "tokenType": "Bearer",
   "expiresIn": 900,
   "user": {
-    "id": "10000000-0000-0000-0000-000000000002",
+    "id": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
     "username": "doctor@medscan.org",
     "email": "doctor@medscan.org",
     "displayName": "Dr. Aminata Diallo",
@@ -249,7 +249,7 @@ Accès aux espaces spécifiques selon le rôle de l'acteur connecté.
 {
   "portalName": "Portail Médecin",
   "authorizedRole": "DOCTOR",
-  "userId": "10000000-0000-0000-0000-000000000002",
+  "userId": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
   "username": "doctor@medscan.org",
   "tenantId": "00000000-0000-0000-0000-000000000001",
   "message": "Accès autorisé au dossier clinique et aux consultations."
@@ -265,6 +265,171 @@ Accès aux espaces spécifiques selon le rôle de l'acteur connecté.
   "detail": "Vos habilitations ne vous permettent pas d'accéder au Portail Pharmacie d'Officine. Rôle requis: PHARMACIST"
 }
 ```
+
+---
+
+### 4.6 Recherche & Création de Dossiers Patients (MOD-03)
+Permet aux médecins et soignants de rechercher ou créer un patient au sein de leur établissement.
+
+- **Recherche de Patients** : `GET /v1/patients?q={terme}`
+  - Rôles autorisés : `DOCTOR`, `NURSE`, `TENANT_ADMIN`, `SUPER_ADMIN`, `AUDITOR`
+  - Filtre automatique : Les soignants ne voient que les patients de leur propre établissement (tenant).
+  - Réponse (200 OK) :
+```json
+[
+  {
+    "id": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+    "nationalId": "BFA-2026-008412",
+    "firstName": "Fatou",
+    "lastName": "Ouedraogo",
+    "fullName": "Fatou Ouedraogo",
+    "birthDate": "1994-06-18",
+    "gender": "F",
+    "bloodGroup": "A+",
+    "phone": "+226 70 12 34 56",
+    "emergencyContact": "Moussa Ouedraogo (+226 76 11 22 33)",
+    "allergies": ["Pénicilline", "Arachide"],
+    "chronicConditions": ["Asthme léger"],
+    "tenantId": "e2241595-e068-46f7-8e82-ab2b9dd3c18a",
+    "createdAt": "2026-08-27T10:00:00Z"
+  }
+]
+```
+
+- **Création d'un Nouveau Dossier Patient** : `POST /v1/patients`
+  - Corps de requête :
+```json
+{
+  "nationalId": "BFA-2026-778899",
+  "firstName": "Boukary",
+  "lastName": "Kindo",
+  "birthDate": "1985-03-22",
+  "gender": "M",
+  "bloodGroup": "B+",
+  "phone": "+226 70 00 11 22",
+  "emergencyContact": "Mariam Kindo (+226 76 33 44 55)",
+  "allergies": ["Iode"],
+  "chronicConditions": ["Ulcère gastrique"]
+}
+```
+
+---
+
+### 4.7 Dossier Médical Complet, Constantes & Consultations (MOD-03)
+
+- **Consultation Dossier Complet** : `GET /v1/patients/{id}`
+  - Retourne la vue 360° du patient : état civil, antécédents, constantes vitales, consultations et ordonnances.
+  - Réponse (200 OK) :
+```json
+{
+  "patient": { "id": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e", "fullName": "Fatou Ouedraogo", ... },
+  "vitalSigns": [
+    {
+      "id": "...",
+      "recordedAt": "2026-09-24T08:30:00Z",
+      "systolicBp": 120,
+      "diastolicBp": 80,
+      "heartRate": 72,
+      "temperature": 36.8,
+      "weightKg": 62.5,
+      "bloodGlucose": 0.95,
+      "recordedBy": "Inf. Awa Kaboré",
+      "recordedByRole": "NURSE"
+    }
+  ],
+  "consultations": [
+    {
+      "id": "...",
+      "date": "2026-09-24T09:00:00Z",
+      "doctorName": "Dr. Seydou Traore",
+      "chiefComplaint": "Bilan de santé et suivi allergologique",
+      "diagnosis": "Asthme intermittent contrôlé sous traitement de crise.",
+      "treatmentPlan": "Poursuivre Salbutamol en cas de crise."
+    }
+  ],
+  "prescriptions": [ ... ]
+}
+```
+
+- **Saisie de Constantes Vitales (Infirmier / Médecin)** : `POST /v1/patients/{id}/vitals`
+```json
+{
+  "systolicBp": 125,
+  "diastolicBp": 82,
+  "heartRate": 76,
+  "temperature": 37.1,
+  "weightKg": 68.5,
+  "bloodGlucose": 1.02
+}
+```
+
+- **Saisie d'une Consultation Clinique (Médecin)** : `POST /v1/patients/{id}/consultations`
+```json
+{
+  "chiefComplaint": "Céphalées intenses et fièvre",
+  "examinationNotes": "Examen clinique complet. Absence de raideur de nuque.",
+  "diagnosis": "Accès palustre simple à Plasmodium falciparum",
+  "treatmentPlan": "Prescription CTA (Artéméther-Luméfantrine) + antipyrétiques."
+}
+```
+
+---
+
+### 4.8 Espace Patient : Mon Carnet de Santé Numérique
+Permet à un patient connecté de consulter son propre dossier en toute confidentialité.
+
+- **Méthode** : `GET`
+- **Chemin** : `/v1/patient/my-record`
+- **Rôle requis** : `PATIENT` (Jeton Bearer)
+- **Réponse Succès (200 OK)** : Retourne le dossier complet du patient connecté.
+
+---
+
+### 4.9 Ordonnances Médicales & Dispensation en Pharmacie (MOD-08)
+
+- **Émission d'Ordonnance Numérique (Médecin)** : `POST /v1/patients/{id}/prescriptions`
+```json
+{
+  "medicationName": "Artéméther-Luméfantrine 20/120mg",
+  "dosage": "4 comprimés",
+  "frequency": "2 fois par jour",
+  "durationDays": 3,
+  "instructions": "Prendre avec un aliment gras ou du lait pour favoriser l'absorption."
+}
+```
+  - Réponse (201 Created) : Génère un code unique infalsifiable, ex : `RX-2026-0042`.
+
+- **Recherche d'Ordonnance par Code / Scan QR (Pharmacien)** : `GET /v1/prescriptions/{code}`
+  - Accessible aux pharmaciens de toute officine agréée pour lecture de prescription.
+
+- **Validation de Dispensation (Pharmacien)** : `POST /v1/prescriptions/{code}/dispense`
+  - Enregistre la délivrance, le nom du pharmacien et la date/heure.
+  - Protection anti-fraude : Toute tentative ultérieure renvoie `409 Conflict` ("Ordonnance déjà dispensée").
+
+---
+
+### 4.10 Dérogation d'Urgence Vitale (Break-Glass - MOD-04)
+Permet à un médecin d'accéder au dossier d'un patient d'un autre établissement en cas d'urgence absolue engageant le pronostic vital.
+
+- **Méthode** : `POST`
+- **Chemin** : `/v1/patients/{id}/break-glass`
+- **Rôle requis** : `DOCTOR`
+- **Corps de Requête** :
+```json
+{
+  "reason": "Polytraumatisé inconscient admis en déchoquage vital sans accompagnant."
+}
+```
+- **Réponse Succès (200 OK)** : Déverrouille immédiatement l'accès au dossier et émet une alerte prioritaire au DPO dans le journal d'audit.
+
+---
+
+### 4.11 Journal d'Audit & Traçabilité DPO (MOD-11)
+
+- **Méthode** : `GET`
+- **Chemin** : `/v1/audit/logs`
+- **Rôles autorisés** : `AUDITOR`, `SUPER_ADMIN`, `TENANT_ADMIN`
+- **Réponse Succès (200 OK)** : Liste immuable append-only des accès aux données de santé.
 
 ---
 
@@ -450,6 +615,72 @@ export const MedscanApi = {
   // Accéder à un portail spécifique
   getPortal: async (portalSlug: string) => {
     const res = await apiClient.get(`/v1/portal/${portalSlug}`);
+    return res.data;
+  },
+
+  // Rechercher des patients
+  searchPatients: async (query?: string) => {
+    const res = await apiClient.get('/v1/patients', { params: { q: query } });
+    return res.data;
+  },
+
+  // Obtenir le dossier médical complet d'un patient
+  getPatientDossier: async (patientId: string) => {
+    const res = await apiClient.get(`/v1/patients/${patientId}`);
+    return res.data;
+  },
+
+  // Créer un nouveau patient
+  createPatient: async (patientData: any) => {
+    const res = await apiClient.post('/v1/patients', patientData);
+    return res.data;
+  },
+
+  // Enregistrer des constantes vitales (Infirmier / Médecin)
+  recordVitals: async (patientId: string, vitals: any) => {
+    const res = await apiClient.post(`/v1/patients/${patientId}/vitals`, vitals);
+    return res.data;
+  },
+
+  // Enregistrer une consultation clinique (Médecin)
+  recordConsultation: async (patientId: string, consultation: any) => {
+    const res = await apiClient.post(`/v1/patients/${patientId}/consultations`, consultation);
+    return res.data;
+  },
+
+  // Mon Carnet de Santé (Patient connecté)
+  getMyRecord: async () => {
+    const res = await apiClient.get('/v1/patient/my-record');
+    return res.data;
+  },
+
+  // Émettre une ordonnance numérique (Médecin)
+  issuePrescription: async (patientId: string, prescription: any) => {
+    const res = await apiClient.post(`/v1/patients/${patientId}/prescriptions`, prescription);
+    return res.data;
+  },
+
+  // Rechercher une ordonnance par code (Pharmacien)
+  lookupPrescription: async (code: string) => {
+    const res = await apiClient.get(`/v1/prescriptions/${code}`);
+    return res.data;
+  },
+
+  // Valider la délivrance en officine (Pharmacien)
+  dispensePrescription: async (code: string) => {
+    const res = await apiClient.post(`/v1/prescriptions/${code}/dispense`);
+    return res.data;
+  },
+
+  // Procédure d'urgence dérogatoire (Break-Glass)
+  triggerBreakGlass: async (patientId: string, reason: string) => {
+    const res = await apiClient.post(`/v1/patients/${patientId}/break-glass`, { reason });
+    return res.data;
+  },
+
+  // Consulter le journal d'audit (DPO / Auditeur)
+  getAuditLogs: async () => {
+    const res = await apiClient.get('/v1/audit/logs');
     return res.data;
   },
 };

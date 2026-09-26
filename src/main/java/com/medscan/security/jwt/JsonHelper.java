@@ -166,4 +166,46 @@ public final class JsonHelper {
 
         return result;
     }
+
+    public static Integer getInt(String json, String key) {
+        Long val = getLong(json, key);
+        return val != null ? val.intValue() : null;
+    }
+
+    public static Double getDouble(String json, String key) {
+        String pattern = "\"" + key + "\"";
+        int keyIndex = json.indexOf(pattern);
+        if (keyIndex == -1) {
+            return null;
+        }
+
+        int colonIndex = json.indexOf(':', keyIndex + pattern.length());
+        if (colonIndex == -1) {
+            return null;
+        }
+
+        int i = colonIndex + 1;
+        while (i < json.length() && Character.isWhitespace(json.charAt(i))) {
+            i++;
+        }
+
+        int start = i;
+        while (i < json.length() && (Character.isDigit(json.charAt(i)) || json.charAt(i) == '-' || json.charAt(i) == '.')) {
+            i++;
+        }
+
+        if (start == i) {
+            return null;
+        }
+
+        try {
+            return Double.parseDouble(json.substring(start, i));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    public static List<String> getStringList(String json, String arrayKey) {
+        return new ArrayList<>(getStringArray(json, arrayKey));
+    }
 }

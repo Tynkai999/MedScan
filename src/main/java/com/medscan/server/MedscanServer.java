@@ -6,6 +6,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -20,6 +22,14 @@ import com.medscan.api.v1.auth.RefreshTokenRequest;
 import com.medscan.api.v1.auth.UserProfileResponse;
 import com.medscan.api.v1.portal.ActorPortalResource;
 import com.medscan.api.v1.portal.ActorPortalResponse;
+import com.medscan.clinical.AuditEvent;
+import com.medscan.clinical.BreakGlassRecord;
+import com.medscan.clinical.ClinicalJsonMapper;
+import com.medscan.clinical.ClinicalService;
+import com.medscan.clinical.Consultation;
+import com.medscan.clinical.Patient;
+import com.medscan.clinical.Prescription;
+import com.medscan.clinical.VitalSigns;
 import com.medscan.security.MedscanPrincipal;
 import com.medscan.security.MedscanSecurityContext;
 import com.medscan.security.jwt.InvalidTokenException;
@@ -56,6 +66,7 @@ public class MedscanServer {
     private final AuthService authService;
     private final HealthResource healthResource;
     private final ActorPortalResource portalResource;
+    private final ClinicalService clinicalService;
 
     public MedscanServer(int port) {
         this.port = port;
@@ -64,6 +75,11 @@ public class MedscanServer {
         this.authService = new AuthService(userRegistry, tokenService);
         this.healthResource = new HealthResource();
         this.portalResource = new ActorPortalResource(new TenantContext());
+        this.clinicalService = new ClinicalService();
+    }
+
+    public ClinicalService getClinicalService() {
+        return clinicalService;
     }
 
     public static void main(String[] args) throws IOException {
@@ -153,6 +169,18 @@ public class MedscanServer {
                     handleMe(exchange);
                 } else if (subPath.startsWith("/v1/portal/") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handlePortal(exchange, subPath.substring("/v1/portal/".length()));
+                } else if (subPath.equals("/v1/patients") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleSearchPatients(exchange);
+                } else if (subPath.equals("/v1/patients") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleCreatePatient(exchange);
+                } else if (subPath.equals("/v1/patient/my-record") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleMyRecord(exchange);
+                } else if (subPath.startsWith("/v1/patients/")) {
+                    handlePatientAction(exchange, subPath.substring("/v1/patients/".length()));
+                } else if (subPath.startsWith("/v1/prescriptions/")) {
+                    handlePrescriptionAction(exchange, subPath.substring("/v1/prescriptions/".length()));
+                } else if (subPath.equals("/v1/audit/logs") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleAuditLogs(exchange);
                 } else {
                     sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Point d'accès introuvable: " + subPath + "\"}");
                 }
@@ -387,6 +415,254 @@ public class MedscanServer {
             json.append("}");
 
             sendJson(exchange, 200, json.toString());
+        }
+
+        private void handleSearchPatients(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("DOCTOR") && !principal.isUserInRole("NURSE")
+                    && !principal.isUserInRole("TENANT_ADMIN") && !principal.isUserInRole("SUPER_ADMIN")
+                    && !principal.isUserInRole("AUDITOR")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Vos habilitations ne permettent pas de rechercher des patients.\"}");
+                return;
+            }
+
+            String query = null;
+            String rawQuery = exchange.getRequestURI().getQuery();
+            if (rawQuery != null) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2 && ("q".equalsIgnoreCase(kv[0]) || "query".equalsIgnoreCase(kv[0]))) {
+                        query = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                    }
+                }
+            }
+
+            List<Patient> list = clinicalService.searchPatients(principal.getTenantId(), query, principal.getRoles());
+            sendJson(exchange, 200, ClinicalJsonMapper.toPatientListJson(list));
+        }
+
+        private void handleCreatePatient(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("DOCTOR") && !principal.isUserInRole("NURSE")
+                    && !principal.isUserInRole("TENANT_ADMIN") && !principal.isUserInRole("SUPER_ADMIN")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Vos habilitations ne permettent pas de créer un dossier patient.\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            Patient patient = ClinicalJsonMapper.parsePatient(body, principal.getTenantId());
+            clinicalService.createPatient(patient, principal.getUserId(), principal.getName(),
+                    principal.getRoles().iterator().next(), principal.getTenantId());
+
+            sendJson(exchange, 201, ClinicalJsonMapper.toJson(patient));
+        }
+
+        private void handleMyRecord(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            Optional<Patient> opt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+            if (opt.isEmpty()) {
+                sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Dossier introuvable\",\"status\":404,\"detail\":\"Aucun dossier médical n'est actuellement rattaché à votre compte.\"}");
+                return;
+            }
+
+            Patient patient = opt.get();
+            var vitals = clinicalService.getVitalSigns(patient.id());
+            var consultations = clinicalService.getConsultations(patient.id());
+            var prescriptions = clinicalService.getPrescriptionsForPatient(patient.id());
+
+            clinicalService.logAudit(principal.getUserId(), principal.getName(), "PATIENT", principal.getTenantId(),
+                    "OWN_RECORD_ACCESSED", "Patient", patient.id().toString(), "SUCCESS",
+                    "Le patient a consulté son propre carnet de santé numérique.");
+
+            sendJson(exchange, 200, ClinicalJsonMapper.toDossierJson(patient, vitals, consultations, prescriptions));
+        }
+
+        private void handlePatientAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String method = exchange.getRequestMethod();
+
+            if (!tail.contains("/")) {
+                if (!"GET".equalsIgnoreCase(method)) {
+                    sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Seule la méthode GET est acceptée sur cette ressource.\"}");
+                    return;
+                }
+
+                UUID patientId;
+                try {
+                    patientId = UUID.fromString(tail);
+                } catch (IllegalArgumentException e) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"L'identifiant patient n'est pas un UUID valide.\"}");
+                    return;
+                }
+
+                if (!clinicalService.canAccessPatient(patientId, principal.getUserId(), principal.getTenantId(), principal.getRoles())) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Cloisonnement tenant actif\",\"status\":403,\"detail\":\"Accès refusé au dossier patient d'un autre établissement. Utilisez le protocole Break-Glass si urgence vitale.\"}");
+                    return;
+                }
+
+                Optional<Patient> opt = clinicalService.findPatientById(patientId);
+                if (opt.isEmpty()) {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Patient introuvable\",\"status\":404,\"detail\":\"Aucun dossier trouvé pour le patient: " + patientId + "\"}");
+                    return;
+                }
+
+                Patient patient = opt.get();
+                var vitals = clinicalService.getVitalSigns(patientId);
+                var consultations = clinicalService.getConsultations(patientId);
+                var prescriptions = clinicalService.getPrescriptionsForPatient(patientId);
+
+                clinicalService.logAudit(principal.getUserId(), principal.getName(),
+                        principal.getRoles().iterator().next(), principal.getTenantId(),
+                        "PATIENT_DOSSIER_ACCESSED", "Patient", patientId.toString(), "SUCCESS",
+                        "Consultation du dossier médical complet de " + patient.fullName());
+
+                sendJson(exchange, 200, ClinicalJsonMapper.toDossierJson(patient, vitals, consultations, prescriptions));
+                return;
+            }
+
+            String[] parts = tail.split("/", 2);
+            UUID patientId;
+            try {
+                patientId = UUID.fromString(parts[0]);
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID patient invalide.\"}");
+                return;
+            }
+
+            Optional<Patient> opt = clinicalService.findPatientById(patientId);
+            if (opt.isEmpty()) {
+                sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Patient introuvable\",\"status\":404,\"detail\":\"Patient introuvable.\"}");
+                return;
+            }
+            Patient patient = opt.get();
+
+            String action = parts[1];
+
+            if ("vitals".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("NURSE") && !principal.isUserInRole("DOCTOR")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul le personnel infirmier ou médical peut enregistrer des constantes vitales.\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                String role = principal.isUserInRole("DOCTOR") ? "DOCTOR" : "NURSE";
+                VitalSigns vitals = ClinicalJsonMapper.parseVitalSigns(body, patientId, principal.getName(), role);
+                clinicalService.recordVitals(vitals, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                sendJson(exchange, 201, ClinicalJsonMapper.toJson(vitals));
+                return;
+            }
+
+            if ("consultations".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("DOCTOR")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul un médecin assermenté peut rédiger des notes cliniques de consultation.\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Consultation consultation = ClinicalJsonMapper.parseConsultation(body, patientId, principal.getUserId(), principal.getName(), principal.getTenantId());
+                clinicalService.recordConsultation(consultation, principal.getUserId(), principal.getName(), "DOCTOR", principal.getTenantId());
+                sendJson(exchange, 201, ClinicalJsonMapper.toJson(consultation));
+                return;
+            }
+
+            if ("prescriptions".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("DOCTOR")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul un médecin assermenté peut émettre une ordonnance médicale numérique.\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Prescription rx = ClinicalJsonMapper.parsePrescription(body, patientId, patient.fullName(), principal.getUserId(), principal.getName(), principal.getTenantId());
+                clinicalService.issuePrescription(rx, principal.getUserId(), principal.getName(), principal.getTenantId());
+                sendJson(exchange, 201, ClinicalJsonMapper.toJson(rx));
+                return;
+            }
+
+            if ("break-glass".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("DOCTOR")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul un médecin peut déclencher la procédure dérogatoire d'urgence vitale (Break-Glass).\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                String reason = JsonHelper.getString(body, "reason");
+                if (reason == null || reason.isBlank()) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Motif obligatoire\",\"status\":400,\"detail\":\"Un motif clinique explicite est légalement requis pour lever les restrictions d'accès en urgence.\"}");
+                    return;
+                }
+                BreakGlassRecord bg = clinicalService.triggerBreakGlass(patientId, principal.getUserId(), principal.getName(), principal.getTenantId(), reason);
+                sendJson(exchange, 200, "{\"status\":\"OVERRIDDEN\",\"message\":\"Accès d'urgence dérogatoire accordé pour le patient " + JsonHelper.escape(patient.fullName()) + "\",\"eventId\":\"" + bg.id() + "\",\"loggedAt\":\"" + bg.timestamp() + "\"}");
+                return;
+            }
+
+            sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Action inconnue\",\"status\":404,\"detail\":\"Action introuvable: " + action + "\"}");
+        }
+
+        private void handlePrescriptionAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String method = exchange.getRequestMethod();
+
+            if (tail.endsWith("/dispense") && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("PHARMACIST")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul un pharmacien d'officine habilité peut valider la dispensation d'une ordonnance.\"}");
+                    return;
+                }
+                String code = tail.substring(0, tail.length() - "/dispense".length());
+                try {
+                    Prescription dispensed = clinicalService.dispensePrescription(code, principal.getName(), principal.getTenantId(), principal.getUserId());
+                    sendJson(exchange, 200, ClinicalJsonMapper.toJson(dispensed));
+                } catch (IllegalArgumentException e) {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Ordonnance introuvable\",\"status\":404,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                } catch (IllegalStateException e) {
+                    sendJson(exchange, 409, "{\"type\":\"https://medscan.org/errors/conflict\",\"title\":\"Déjà dispensée\",\"status\":409,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+                return;
+            }
+
+            if ("GET".equalsIgnoreCase(method)) {
+                String code = tail;
+                Optional<Prescription> opt = clinicalService.findPrescriptionByCode(code);
+                if (opt.isEmpty()) {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Ordonnance introuvable\",\"status\":404,\"detail\":\"Aucune ordonnance trouvée pour le code: " + JsonHelper.escape(code) + "\"}");
+                    return;
+                }
+                Prescription rx = opt.get();
+                clinicalService.logAudit(principal.getUserId(), principal.getName(),
+                        principal.getRoles().iterator().next(), principal.getTenantId(),
+                        "PRESCRIPTION_LOOKUP", "Prescription", code, "SUCCESS",
+                        "Consultation de l'ordonnance " + code + " pour " + rx.patientName());
+
+                sendJson(exchange, 200, ClinicalJsonMapper.toJson(rx));
+                return;
+            }
+
+            sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode non autorisée.\"}");
+        }
+
+        private void handleAuditLogs(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("AUDITOR") && !principal.isUserInRole("SUPER_ADMIN") && !principal.isUserInRole("TENANT_ADMIN")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul le responsable d'audit (DPO) ou l'administrateur peut consulter le journal d'audit.\"}");
+                return;
+            }
+
+            boolean isPlatformAuditor = principal.isUserInRole("AUDITOR") || principal.isUserInRole("SUPER_ADMIN");
+            List<AuditEvent> logs = clinicalService.getAuditLogs(principal.getTenantId(), isPlatformAuditor, 100);
+            sendJson(exchange, 200, ClinicalJsonMapper.toAuditListJson(logs));
         }
 
         private MedscanSecurityContext authenticate(HttpExchange exchange) throws IOException {

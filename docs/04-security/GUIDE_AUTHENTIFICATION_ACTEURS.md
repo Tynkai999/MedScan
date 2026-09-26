@@ -54,11 +54,11 @@ Tous les comptes de démonstration et de développement partagent le mot de pass
     "tokenType": "Bearer",
     "expiresIn": 900,
     "user": {
-      "id": "10000000-0000-0000-0000-000000000002",
+      "id": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
       "username": "doctor@medscan.org",
       "email": "doctor@medscan.org",
       "displayName": "Dr. Seydou Traore (Médecin Référent)",
-      "tenantId": "11111111-1111-1111-1111-111111111111",
+      "tenantId": "e2241595-e068-46f7-8e82-ab2b9dd3c18a",
       "tenantCode": "CH_OUAGADOUGOU",
       "roles": ["DOCTOR"],
       "permissions": ["patient:search", "consultation:write", "prescription:create", "exam:order", "break_glass:request"]

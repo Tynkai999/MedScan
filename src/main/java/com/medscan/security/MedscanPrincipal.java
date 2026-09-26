@@ -43,6 +43,10 @@ public class MedscanPrincipal implements Principal {
         return identity.hasRole(role);
     }
 
+    public boolean isUserInRole(String role) {
+        return identity.hasRole(role);
+    }
+
     public VerifiedTenantIdentity getIdentity() {
         return identity;
     }

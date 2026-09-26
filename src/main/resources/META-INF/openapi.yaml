@@ -124,6 +124,145 @@ paths:
         '401':
           description: Invalid or expired refresh token
 
+  /v1/patients:
+    get:
+      summary: Search patients within authenticated actor's tenant
+      operationId: searchPatients
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: Search term (name, national ID, phone)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching patients list
+        '403':
+          description: Forbidden
+    post:
+      summary: Create a new patient record
+      operationId: createPatient
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Patient created
+
+  /v1/patients/{id}:
+    get:
+      summary: Retrieve complete longitudinal patient health record
+      operationId: getPatientRecord
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Patient dossier including vitals, consultations and prescriptions
+        '403':
+          description: Access denied by tenant isolation
+
+  /v1/patients/{id}/vitals:
+    post:
+      summary: Record vital signs for a patient
+      operationId: recordVitals
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Vital signs recorded
+
+  /v1/patients/{id}/consultations:
+    post:
+      summary: Record clinical consultation notes
+      operationId: recordConsultation
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Consultation notes recorded
+
+  /v1/patients/{id}/prescriptions:
+    post:
+      summary: Issue an electronic prescription
+      operationId: issuePrescription
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Prescription issued
+
+  /v1/patients/{id}/break-glass:
+    post:
+      summary: Emergency override for vital emergency access
+      operationId: triggerBreakGlass
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Emergency access granted and audited
+
+  /v1/patient/my-record:
+    get:
+      summary: Retrieve authenticated patient's own health record
+      operationId: getMyRecord
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Patient's digital health record
+
+  /v1/prescriptions/{code}:
+    get:
+      summary: Lookup prescription by unique code (e.g. RX-2026-0042)
+      operationId: lookupPrescription
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Prescription details
+
+  /v1/prescriptions/{code}/dispense:
+    post:
+      summary: Dispense medication in pharmacy
+      operationId: dispensePrescription
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Prescription dispensed successfully
+        '409':
+          description: Already dispensed
+
+  /v1/audit/logs:
+    get:
+      summary: Retrieve immutable audit trail logs
+      operationId: getAuditLogs
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Audit events list
+
 components:
   securitySchemes:
     BearerAuth:

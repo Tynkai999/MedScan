@@ -1,0 +1,336 @@
+package com.medscan.clinical;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
+
+/**
+ * Service central du Dossier Médical Partagé (MOD-03), des Prescriptions (MOD-08),
+ * des Accès d'Urgence Break-Glass (MOD-04) et du Journal d'Audit (MOD-11).
+ *
+ * Applique l'isolation multi-tenant stricte et la traçabilité des accès aux données de santé.
+ */
+public class ClinicalService {
+
+    private static final UUID PLATFORM_TENANT = UUID.fromString("b47c7913-35d0-43e3-8ec1-5614dec9ffcd");
+
+    private final Map<UUID, Patient> patientsById = new ConcurrentHashMap<>();
+    private final Map<UUID, List<VitalSigns>> vitalsByPatientId = new ConcurrentHashMap<>();
+    private final Map<UUID, List<Consultation>> consultationsByPatientId = new ConcurrentHashMap<>();
+    private final Map<UUID, List<Prescription>> prescriptionsByPatientId = new ConcurrentHashMap<>();
+    private final Map<String, Prescription> prescriptionsByCode = new ConcurrentHashMap<>();
+    private final List<BreakGlassRecord> breakGlassRecords = new CopyOnWriteArrayList<>();
+    private final List<AuditEvent> auditLogs = new CopyOnWriteArrayList<>();
+
+    public ClinicalService() {
+        initSeedData();
+    }
+
+    // ==========================================
+    // GESTION DES PATIENTS (MOD-03)
+    // ==========================================
+
+    public List<Patient> searchPatients(UUID tenantId, String query, Set<String> roles) {
+        boolean canSeeAll = roles.contains("SUPER_ADMIN") || roles.contains("AUDITOR") || PLATFORM_TENANT.equals(tenantId);
+
+        return patientsById.values().stream()
+                .filter(p -> canSeeAll || p.tenantId().equals(tenantId))
+                .filter(p -> {
+                    if (query == null || query.isBlank()) return true;
+                    String q = query.toLowerCase();
+                    return p.fullName().toLowerCase().contains(q)
+                            || p.nationalId().toLowerCase().contains(q)
+                            || p.phone().contains(q);
+                })
+                .sorted((a, b) -> a.lastName().compareToIgnoreCase(b.lastName()))
+                .collect(Collectors.toList());
+    }
+
+    public Optional<Patient> findPatientById(UUID patientId) {
+        return Optional.ofNullable(patientsById.get(patientId));
+    }
+
+    public Optional<Patient> findPatientByLinkedUserId(UUID userId) {
+        return patientsById.values().stream()
+                .filter(p -> userId.equals(p.linkedUserId()))
+                .findFirst();
+    }
+
+    public boolean canAccessPatient(UUID patientId, UUID requesterUserId, UUID requesterTenantId, Set<String> roles) {
+        Patient patient = patientsById.get(patientId);
+        if (patient == null) return false;
+
+        // 1. Le patient lui-même a accès à son propre dossier
+        if (requesterUserId.equals(patient.linkedUserId())) {
+            return true;
+        }
+
+        // 2. Super Admin et Auditeur de la plateforme
+        if (roles.contains("SUPER_ADMIN") || roles.contains("AUDITOR") || PLATFORM_TENANT.equals(requesterTenantId)) {
+            return true;
+        }
+
+        // 3. Personnel soignant ou administratif du MÊME tenant (Hôpital / Clinique)
+        if (patient.tenantId().equals(requesterTenantId)) {
+            return true;
+        }
+
+        // 4. Accès d'urgence dérogatoire (Break-Glass) actif pour ce praticien
+        return hasActiveBreakGlass(patientId, requesterUserId);
+    }
+
+    public Patient createPatient(Patient patient, UUID actorId, String actorUsername, String actorRole, UUID actorTenantId) {
+        patientsById.put(patient.id(), patient);
+        logAudit(actorId, actorUsername, actorRole, actorTenantId,
+                "PATIENT_CREATED", "Patient", patient.id().toString(), "SUCCESS",
+                "Création du dossier patient pour: " + patient.fullName() + " (" + patient.nationalId() + ")");
+        return patient;
+    }
+
+    // ==========================================
+    // CONSTANTES VITALES (MOD-03)
+    // ==========================================
+
+    public VitalSigns recordVitals(VitalSigns vitals, UUID actorId, String actorUsername, String actorRole, UUID actorTenantId) {
+        vitalsByPatientId.computeIfAbsent(vitals.patientId(), k -> new CopyOnWriteArrayList<>()).add(0, vitals);
+        logAudit(actorId, actorUsername, actorRole, actorTenantId,
+                "VITALS_RECORDED", "VitalSigns", vitals.id().toString(), "SUCCESS",
+                "Constantes enregistrées pour patient " + vitals.patientId() + " (Tension: " + vitals.systolicBp() + "/" + vitals.diastolicBp() + " mmHg, Pouls: " + vitals.heartRate() + " bpm)");
+        return vitals;
+    }
+
+    public List<VitalSigns> getVitalSigns(UUID patientId) {
+        return vitalsByPatientId.getOrDefault(patientId, Collections.emptyList());
+    }
+
+    // ==========================================
+    // CONSULTATIONS & NOTES CLINIQUES (MOD-03)
+    // ==========================================
+
+    public Consultation recordConsultation(Consultation consultation, UUID actorId, String actorUsername, String actorRole, UUID actorTenantId) {
+        consultationsByPatientId.computeIfAbsent(consultation.patientId(), k -> new CopyOnWriteArrayList<>()).add(0, consultation);
+        logAudit(actorId, actorUsername, actorRole, actorTenantId,
+                "CONSULTATION_CREATED", "Consultation", consultation.id().toString(), "SUCCESS",
+                "Consultation enregistrée par " + consultation.doctorName() + " : " + consultation.diagnosis());
+        return consultation;
+    }
+
+    public List<Consultation> getConsultations(UUID patientId) {
+        return consultationsByPatientId.getOrDefault(patientId, Collections.emptyList());
+    }
+
+    // ==========================================
+    // ORDONNANCES & PRESCRIPTIONS (MOD-08)
+    // ==========================================
+
+    public Prescription issuePrescription(Prescription prescription, UUID doctorId, String doctorName, UUID tenantId) {
+        prescriptionsByPatientId.computeIfAbsent(prescription.patientId(), k -> new CopyOnWriteArrayList<>()).add(0, prescription);
+        prescriptionsByCode.put(prescription.prescriptionCode().toUpperCase(), prescription);
+
+        logAudit(doctorId, doctorName, "DOCTOR", tenantId,
+                "PRESCRIPTION_ISSUED", "Prescription", prescription.prescriptionCode(), "SUCCESS",
+                "Ordonnance émise " + prescription.prescriptionCode() + " avec " + prescription.items().size() + " lignes de traitement.");
+        return prescription;
+    }
+
+    public List<Prescription> getPrescriptionsForPatient(UUID patientId) {
+        return prescriptionsByPatientId.getOrDefault(patientId, Collections.emptyList());
+    }
+
+    public Optional<Prescription> findPrescriptionByCode(String code) {
+        if (code == null) return Optional.empty();
+        return Optional.ofNullable(prescriptionsByCode.get(code.trim().toUpperCase()));
+    }
+
+    public synchronized Prescription dispensePrescription(String code, String pharmacistName, UUID pharmacistTenantId, UUID actorId) {
+        Prescription current = findPrescriptionByCode(code)
+                .orElseThrow(() -> new IllegalArgumentException("Ordonnance introuvable avec le code: " + code));
+
+        if ("DISPENSED".equalsIgnoreCase(current.status())) {
+            throw new IllegalStateException("Cette ordonnance a déjà été dispensée le " + current.dispensedAt() + " par " + current.dispensedBy());
+        }
+
+        Prescription updated = current.withDispensation(pharmacistName, Instant.now());
+        prescriptionsByCode.put(code.toUpperCase(), updated);
+
+        // Mettre à jour dans la liste du patient
+        List<Prescription> list = prescriptionsByPatientId.get(current.patientId());
+        if (list != null) {
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i).id().equals(current.id())) {
+                    list.set(i, updated);
+                    break;
+                }
+            }
+        }
+
+        logAudit(actorId, pharmacistName, "PHARMACIST", pharmacistTenantId,
+                "PRESCRIPTION_DISPENSED", "Prescription", code, "SUCCESS",
+                "Dispensation complète de l'ordonnance " + code + " effectuée avec succès.");
+
+        return updated;
+    }
+
+    // ==========================================
+    // ACCÈS D'URGENCE (BREAK-GLASS - MOD-04)
+    // ==========================================
+
+    public BreakGlassRecord triggerBreakGlass(UUID patientId, UUID doctorId, String doctorName, UUID doctorTenantId, String reason) {
+        BreakGlassRecord record = new BreakGlassRecord(
+                UUID.randomUUID(),
+                patientId,
+                doctorId,
+                doctorName,
+                doctorTenantId,
+                reason,
+                Instant.now(),
+                "CRITICAL_EMERGENCY"
+        );
+        breakGlassRecords.add(record);
+
+        logAudit(doctorId, doctorName, "DOCTOR", doctorTenantId,
+                "BREAK_GLASS_TRIGGERED", "Patient", patientId.toString(), "CRITICAL",
+                "[ALERTE DPO] Dérogation d'urgence vitale activée par Dr. " + doctorName + " - Motif: " + reason);
+
+        return record;
+    }
+
+    public boolean hasActiveBreakGlass(UUID patientId, UUID doctorId) {
+        return breakGlassRecords.stream()
+                .anyMatch(bg -> bg.patientId().equals(patientId) && bg.doctorId().equals(doctorId));
+    }
+
+    // ==========================================
+    // JOURNAL D'AUDIT & OBSERVABILITÉ (MOD-11)
+    // ==========================================
+
+    public void logAudit(UUID actorId, String actorUsername, String actorRole, UUID tenantId,
+                         String action, String resource, String resourceId, String status, String details) {
+        AuditEvent event = new AuditEvent(
+                UUID.randomUUID(),
+                Instant.now(),
+                actorId,
+                actorUsername,
+                actorRole,
+                tenantId,
+                action,
+                resource,
+                resourceId,
+                status,
+                details
+        );
+        auditLogs.add(0, event); // Ingestion tête de liste pour ordre chronologique inverse
+    }
+
+    public List<AuditEvent> getAuditLogs(UUID requesterTenantId, boolean isPlatformAuditor, int limit) {
+        return auditLogs.stream()
+                .filter(ev -> isPlatformAuditor || PLATFORM_TENANT.equals(requesterTenantId) || ev.tenantId().equals(requesterTenantId))
+                .limit(limit > 0 ? limit : 50)
+                .collect(Collectors.toList());
+    }
+
+    // ==========================================
+    // DONNÉES DE DÉMONSTRATION (BURKINA FASO / AFRIQUE)
+    // ==========================================
+
+    private void initSeedData() {
+        UUID tenantHospital = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
+        UUID tenantHospital2 = UUID.fromString("f56de30f-c802-42c6-8587-707a8d1a9814");
+        UUID doctorId = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");
+        UUID patientUserId = UUID.fromString("116286b8-79e3-48b6-b99e-06fed5f10ee4");
+
+        // 1. Patient Fatou Ouedraogo (liée à l'utilisateur patient@medscan.org)
+        UUID p1Id = UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e");
+        Patient p1 = new Patient(
+                p1Id,
+                "BFA-2026-008412",
+                "Fatou",
+                "Ouedraogo",
+                "1994-06-18",
+                "F",
+                "A+",
+                "+226 70 12 34 56",
+                "Moussa Ouedraogo (+226 76 11 22 33)",
+                List.of("Pénicilline", "Arachide"),
+                List.of("Asthme léger"),
+                tenantHospital,
+                patientUserId,
+                Instant.now().minusSeconds(86400 * 30)
+        );
+        patientsById.put(p1Id, p1);
+
+        // Constantes Fatou
+        VitalSigns v1 = new VitalSigns(
+                UUID.randomUUID(), p1Id, Instant.now().minusSeconds(86400 * 2),
+                120, 80, 72, 36.8, 62.5, 0.95,
+                "Inf. Awa Kaboré", "NURSE"
+        );
+        vitalsByPatientId.computeIfAbsent(p1Id, k -> new CopyOnWriteArrayList<>()).add(v1);
+
+        // Consultation Fatou
+        Consultation c1 = new Consultation(
+                UUID.randomUUID(), p1Id, doctorId, "Dr. Seydou Traore", tenantHospital,
+                Instant.now().minusSeconds(86400 * 2),
+                "Bilan de santé trimestriel et suivi allergologique",
+                "Patient stable. Murmure vésiculaire clair, pas de râles sibilants. Pression artérielle normale.",
+                "Asthme intermittent contrôlé sous traitement de crise.",
+                "Poursuivre Salbutamol en cas de gêne. Éviction stricte des dérivés pénicilliniques."
+        );
+        consultationsByPatientId.computeIfAbsent(p1Id, k -> new CopyOnWriteArrayList<>()).add(c1);
+
+        // Prescription Fatou
+        Prescription rx1 = new Prescription(
+                UUID.randomUUID(),
+                "RX-2026-0042",
+                p1Id,
+                "Fatou Ouedraogo",
+                doctorId,
+                "Dr. Seydou Traore",
+                tenantHospital,
+                Instant.now().minusSeconds(86400 * 2),
+                "ISSUED",
+                List.of(
+                        new PrescriptionItem(UUID.randomUUID(), "Salbutamol 100 µg spray", "2 bouffées", "En cas de crise", 30, "Inhalation buccale"),
+                        new PrescriptionItem(UUID.randomUUID(), "Paracétamol 1g comprimés", "1 comprimé", "Toutes les 8h si douleur", 5, "Ne pas dépasser 3g/jour")
+                ),
+                null,
+                null
+        );
+        prescriptionsByPatientId.computeIfAbsent(p1Id, k -> new CopyOnWriteArrayList<>()).add(rx1);
+        prescriptionsByCode.put("RX-2026-0042", rx1);
+
+        // 2. Patient Ibrahim Compaore (Patient d'un autre tenant pour tester le cloisonnement et le Break-Glass)
+        UUID p2Id = UUID.fromString("dababb25-8dc9-402c-b527-15d9a4b1f380");
+        Patient p2 = new Patient(
+                p2Id,
+                "BFA-2026-009187",
+                "Ibrahim",
+                "Compaore",
+                "1962-11-04",
+                "M",
+                "O+",
+                "+226 78 45 67 89",
+                "Salamata Compaore (+226 70 99 88 77)",
+                List.of("Sulfamides"),
+                List.of("Diabète de Type 2", "Hypertension Artérielle"),
+                tenantHospital2, // Tenant différent !
+                null,
+                Instant.now().minusSeconds(86400 * 60)
+        );
+        patientsById.put(p2Id, p2);
+
+        // Audit de démarrage
+        logAudit(UUID.fromString("f70a1335-b31f-4193-88ef-ce3460f3d029"),
+                "system-bootstrap", "SYSTEM", PLATFORM_TENANT,
+                "PLATFORM_BOOTSTRAP", "System", "MedScan-v1", "SUCCESS",
+                "Initialisation du registre clinique MedScan Enterprise avec données de référence.");
+    }
+}
