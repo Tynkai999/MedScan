@@ -1,0 +1,226 @@
+{
+  "realm": "medscan",
+  "enabled": true,
+  "displayName": "MedScan Enterprise Realm",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      { "name": "PATIENT", "description": "Patient usager du système de soins" },
+      { "name": "DOCTOR", "description": "Médecin praticien (généraliste / spécialiste)" },
+      { "name": "RADIOLOGIST", "description": "Médecin radiologue ou spécialiste imagerie" },
+      { "name": "NURSE", "description": "Infirmier / soignant" },
+      { "name": "LAB_TECHNICIAN", "description": "Technicien de laboratoire d'analyses" },
+      { "name": "PHARMACIST", "description": "Pharmacien d'officine" },
+      { "name": "DELIVERY_AGENT", "description": "Agent de livraison pharmaceutique" },
+      { "name": "TENANT_ADMIN", "description": "Administrateur d'établissement de santé" },
+      { "name": "SUPER_ADMIN", "description": "Super-administrateur de la plateforme MedScan" },
+      { "name": "AUDITOR", "description": "Auditeur de sécurité / DPO" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "medscan-backend",
+      "name": "MedScan Jakarta EE Backend",
+      "enabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "medscan-mobile",
+      "name": "MedScan Mobile Flutter App",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["medscan://oauth2redirect"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
+      "clientId": "medscan-web",
+      "name": "MedScan Web Portal",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://localhost:3000/*", "https://*.medscan.org/*"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "id": "10000000-0000-0000-0000-000000000001",
+      "username": "patient@medscan.org",
+      "email": "patient@medscan.org",
+      "firstName": "Fatou",
+      "lastName": "Ouedraogo",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["11111111-1111-1111-1111-111111111111"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["PATIENT"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000002",
+      "username": "doctor@medscan.org",
+      "email": "doctor@medscan.org",
+      "firstName": "Seydou",
+      "lastName": "Traore",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["11111111-1111-1111-1111-111111111111"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["DOCTOR"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000003",
+      "username": "radiologist@medscan.org",
+      "email": "radiologist@medscan.org",
+      "firstName": "Aïssatou",
+      "lastName": "Sawadogo",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["11111111-1111-1111-1111-111111111111"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["RADIOLOGIST"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000004",
+      "username": "nurse@medscan.org",
+      "email": "nurse@medscan.org",
+      "firstName": "Mariam",
+      "lastName": "Diallo",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["11111111-1111-1111-1111-111111111111"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["NURSE"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000005",
+      "username": "labtech@medscan.org",
+      "email": "labtech@medscan.org",
+      "firstName": "Moussa",
+      "lastName": "Kabore",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["22222222-2222-2222-2222-222222222222"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["LAB_TECHNICIAN"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000006",
+      "username": "pharmacist@medscan.org",
+      "email": "pharmacist@medscan.org",
+      "firstName": "Pascal",
+      "lastName": "Bado",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["33333333-3333-3333-3333-333333333333"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["PHARMACIST"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000007",
+      "username": "delivery@medscan.org",
+      "email": "delivery@medscan.org",
+      "firstName": "Ibrahim",
+      "lastName": "Zongo",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["44444444-4444-4444-4444-444444444444"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["DELIVERY_AGENT"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000008",
+      "username": "tenantadmin@medscan.org",
+      "email": "tenantadmin@medscan.org",
+      "firstName": "Admin",
+      "lastName": "Hospital",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["11111111-1111-1111-1111-111111111111"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["TENANT_ADMIN"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000009",
+      "username": "superadmin@medscan.org",
+      "email": "superadmin@medscan.org",
+      "firstName": "Super",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000000"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["SUPER_ADMIN"]
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000010",
+      "username": "auditor@medscan.org",
+      "email": "auditor@medscan.org",
+      "firstName": "DPO",
+      "lastName": "Auditor",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000000"]
+      },
+      "credentials": [
+        { "type": "password", "value": "Password123!", "temporary": false }
+      ],
+      "realmRoles": ["AUDITOR"]
+    }
+  ]
+}

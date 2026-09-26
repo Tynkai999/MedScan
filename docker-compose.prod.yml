@@ -1,0 +1,41 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: medscan-backend-api
+    restart: always
+    environment:
+      PORT: "8080"
+      JAVA_OPTS: "-Xms256m -Xmx1024m -XX:+UseG1GC"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/medscan/api/v1/health | grep UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Reverse Proxy avec HTTPS automatique (Let's Encrypt automatique)
+  # Pour activer le domaine : remplacer "api.votredomaine.com" par votre nom de domaine
+  caddy:
+    image: caddy:2-alpine
+    container_name: medscan-proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN_NAME: "${DOMAIN_NAME:-localhost}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

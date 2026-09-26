@@ -1,0 +1,10 @@
+.git
+.mvn
+.settings
+target/*
+!target/medscan-backend.war
+!.mvn/wrapper/maven-wrapper.properties
+*.log
+.env
+.env.*
+!.env.example

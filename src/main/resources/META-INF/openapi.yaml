@@ -1,0 +1,132 @@
+openapi: 3.1.0
+info:
+  title: MedScan Enterprise API
+  version: 0.1.0-SNAPSHOT
+  description: >
+    Security-first API for MedScan Enterprise.
+    Enforces Zero Trust, OIDC/OAuth2 Bearer JWT authentication,
+    multi-tenant isolation, and strict RBAC/ABAC authorization.
+
+paths:
+  /v1/health:
+    get:
+      summary: Returns non-sensitive service health
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is available
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [UP]
+
+  /v1/auth/login:
+    post:
+      summary: Authenticates an actor and issues RS256 JWT tokens
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  example: doctor@medscan.org
+                password:
+                  type: string
+                  format: password
+                  example: Password123!
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken, refreshToken, tokenType, expiresIn, user]
+                properties:
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+                  tokenType:
+                    type: string
+                    example: Bearer
+                  expiresIn:
+                    type: integer
+                    example: 900
+                  user:
+                    type: object
+                    required: [id, username, email, tenantId, roles]
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      email:
+                        type: string
+                      displayName:
+                        type: string
+                      tenantId:
+                        type: string
+                        format: uuid
+                      tenantCode:
+                        type: string
+                      roles:
+                        type: array
+                        items:
+                          type: string
+                      permissions:
+                        type: array
+                        items:
+                          type: string
+        '401':
+          description: Invalid credentials
+
+  /v1/auth/me:
+    get:
+      summary: Returns profile and roles of the authenticated actor
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Authenticated user profile
+        '401':
+          description: Unauthorized
+
+  /v1/auth/refresh:
+    post:
+      summary: Refreshes an access token
+      operationId: refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed successfully
+        '401':
+          description: Invalid or expired refresh token
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

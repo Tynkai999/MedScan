@@ -1,0 +1,16 @@
+{$DOMAIN_NAME:localhost} {
+    # Reverse proxy vers le backend MedScan
+    reverse_proxy backend:8080
+
+    # Compression moderne (Gzip & Zstandard) pour économiser la bande passante mobile
+    encode gzip zstd
+
+    # En-têtes de sécurité conformes aux recommandations OWASP & standards internationaux
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+}
