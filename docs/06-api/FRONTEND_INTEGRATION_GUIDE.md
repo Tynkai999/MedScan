@@ -433,6 +433,95 @@ Permet à un médecin d'accéder au dossier d'un patient d'un autre établisseme
 
 ---
 
+### 4.12 Imagerie Médicale & Aide au Diagnostic IA (MOD-05 & MOD-06)
+Ce module permet aux radiologues et médecins d'examiner des clichés radiologiques, de déclencher l'analyse prédictive par IA (score de confiance + carte d'activation Grad-CAM), et de valider officiellement le compte-rendu médical.
+
+#### A. Lister les Examens Radiologiques
+- **Méthode** : `GET`
+- **Chemin** : `/v1/imaging/studies?patientId={id}` (paramètre optionnel)
+- **Rôles autorisés** : `RADIOLOGIST`, `DOCTOR`, `TENANT_ADMIN`, `SUPER_ADMIN`, `AUDITOR`
+- **Réponse Succès (200 OK)** :
+```json
+[
+  {
+    "id": "c0000000-0000-0000-0000-000000000001",
+    "patientId": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+    "patientName": "Fatou Ouedraogo",
+    "modality": "XR",
+    "bodyPart": "CHEST",
+    "title": "Radiographie Thorax Face et Profil",
+    "imageUrl": "https://medscan-sluw.onrender.com/assets/imaging/rx_chest_fatou_01.png",
+    "studyDate": "2026-09-23T14:30:00Z",
+    "status": "VALIDATED_BY_DOCTOR",
+    "aiAnalysis": { ... },
+    "report": { ... }
+  }
+]
+```
+
+#### B. Consulter un Examen Radiologique Spécifique
+- **Méthode** : `GET`
+- **Chemin** : `/v1/imaging/studies/{id}`
+- **Réponse Succès (200 OK)** : Détails de l'examen, cliché, résultat d'inférence IA et compte-rendu radiologique.
+
+#### C. Déclencher l'Analyse par le Modèle d'IA (Inférence Découplée)
+- **Méthode** : `POST`
+- **Chemin** : `/v1/imaging/studies/{id}/ai-analyze`
+- **Rôles requis** : `DOCTOR`, `RADIOLOGIST`
+- **Réponse Succès (200 OK)** :
+```json
+{
+  "id": "c0000000-0000-0000-0000-000000000001",
+  "status": "ANALYZED_AI",
+  "aiAnalysis": {
+    "id": "...",
+    "analyzedAt": "2026-09-26T20:20:00Z",
+    "modelName": "MedScan-ChestVision-DenseNet121",
+    "modelVersion": "2.1.0-embedded",
+    "primaryFinding": "Foyer de condensation alvéolaire du lobe inférieur droit compatible avec une pneumopathie.",
+    "confidenceScore": 0.946,
+    "riskLevel": "HIGH",
+    "findings": [
+      {
+        "label": "Opacité / Condensation alvéolaire",
+        "probability": 0.946,
+        "anatomicalRegion": "Lobe inférieur droit",
+        "severity": "HIGH"
+      },
+      {
+        "label": "Cardiomégalie modérée",
+        "probability": 0.380,
+        "anatomicalRegion": "Silhouette cardio-thoracique (ICT ~ 0.53)",
+        "severity": "MODERATE"
+      }
+    ],
+    "heatmapOverlayUrl": "https://medscan-sluw.onrender.com/assets/heatmaps/gradcam_chest_lobar_r.png",
+    "executionTimeMs": 185,
+    "disclaimer": "Résultat d'aide au diagnostic clinique généré par intelligence artificielle à titre consultatif..."
+  }
+}
+```
+
+> **Conseil UI Frontend (Affichage Grad-CAM)** : Le frontend peut superposer le calque d'attention (`heatmapOverlayUrl`) par-dessus le cliché original (`imageUrl`) avec un curseur d'opacité (0% à 100%) pour permettre au médecin de visualiser la zone que l'IA a examinée.
+
+#### D. Valider et Signer le Compte-Rendu Radiologique (Humain dans la Boucle)
+Conformément à la déontologie médicale, l'IA ne valide jamais seule un diagnostic : un praticien doit approuver, corriger ou rejeter le rapport.
+
+- **Méthode** : `POST`
+- **Chemin** : `/v1/imaging/studies/{id}/report`
+- **Rôles requis** : `RADIOLOGIST`, `DOCTOR`
+- **Corps de Requête** :
+```json
+{
+  "conclusion": "Confirmation de l'analyse IA. Infiltrat pulmonaire lobaire inférieur droit sans épanchement.",
+  "aiAgreementStatus": "AGREED",
+  "recommendedActions": "Antibiothérapie ciblée et contrôle radiologique à J+10."
+}
+```
+- **Réponse Succès (200 OK)** : État de l'étude mis à jour à `VALIDATED_BY_DOCTOR`.
+
+---
+
 ## 5. Modèle Standardisé des Erreurs (RFC 7807 Problem Details)
 
 Toutes les erreurs de l'API MedScan Enterprise suivent strictement la spécification standard **RFC 7807** :
@@ -681,6 +770,30 @@ export const MedscanApi = {
   // Consulter le journal d'audit (DPO / Auditeur)
   getAuditLogs: async () => {
     const res = await apiClient.get('/v1/audit/logs');
+    return res.data;
+  },
+
+  // Lister les examens d'imagerie
+  searchImagingStudies: async (patientId?: string) => {
+    const res = await apiClient.get('/v1/imaging/studies', { params: { patientId } });
+    return res.data;
+  },
+
+  // Obtenir un examen radiologique avec son analyse IA
+  getImagingStudy: async (studyId: string) => {
+    const res = await apiClient.get(`/v1/imaging/studies/${studyId}`);
+    return res.data;
+  },
+
+  // Déclencher l'analyse IA
+  triggerAiAnalysis: async (studyId: string) => {
+    const res = await apiClient.post(`/v1/imaging/studies/${studyId}/ai-analyze`);
+    return res.data;
+  },
+
+  // Valider et signer le compte-rendu radiologique (Médecin / Radiologue)
+  submitRadiologistReport: async (studyId: string, report: { conclusion: string; aiAgreementStatus: string; recommendedActions?: string }) => {
+    const res = await apiClient.post(`/v1/imaging/studies/${studyId}/report`, report);
     return res.data;
   },
 };

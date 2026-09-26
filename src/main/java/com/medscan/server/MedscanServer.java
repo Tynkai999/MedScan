@@ -30,6 +30,11 @@ import com.medscan.clinical.Consultation;
 import com.medscan.clinical.Patient;
 import com.medscan.clinical.Prescription;
 import com.medscan.clinical.VitalSigns;
+import com.medscan.imaging.AiAnalysisResult;
+import com.medscan.imaging.ImagingJsonMapper;
+import com.medscan.imaging.ImagingService;
+import com.medscan.imaging.ImagingStudy;
+import com.medscan.imaging.RadiologistReport;
 import com.medscan.security.MedscanPrincipal;
 import com.medscan.security.MedscanSecurityContext;
 import com.medscan.security.jwt.InvalidTokenException;
@@ -67,6 +72,7 @@ public class MedscanServer {
     private final HealthResource healthResource;
     private final ActorPortalResource portalResource;
     private final ClinicalService clinicalService;
+    private final ImagingService imagingService;
 
     public MedscanServer(int port) {
         this.port = port;
@@ -76,10 +82,15 @@ public class MedscanServer {
         this.healthResource = new HealthResource();
         this.portalResource = new ActorPortalResource(new TenantContext());
         this.clinicalService = new ClinicalService();
+        this.imagingService = new ImagingService(clinicalService);
     }
 
     public ClinicalService getClinicalService() {
         return clinicalService;
+    }
+
+    public ImagingService getImagingService() {
+        return imagingService;
     }
 
     public static void main(String[] args) throws IOException {
@@ -181,6 +192,12 @@ public class MedscanServer {
                     handlePrescriptionAction(exchange, subPath.substring("/v1/prescriptions/".length()));
                 } else if (subPath.equals("/v1/audit/logs") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handleAuditLogs(exchange);
+                } else if (subPath.equals("/v1/imaging/studies") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleSearchImagingStudies(exchange);
+                } else if (subPath.equals("/v1/imaging/studies") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleCreateImagingStudy(exchange);
+                } else if (subPath.startsWith("/v1/imaging/studies/")) {
+                    handleImagingStudyAction(exchange, subPath.substring("/v1/imaging/studies/".length()));
                 } else {
                     sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Point d'accès introuvable: " + subPath + "\"}");
                 }
@@ -663,6 +680,121 @@ public class MedscanServer {
             boolean isPlatformAuditor = principal.isUserInRole("AUDITOR") || principal.isUserInRole("SUPER_ADMIN");
             List<AuditEvent> logs = clinicalService.getAuditLogs(principal.getTenantId(), isPlatformAuditor, 100);
             sendJson(exchange, 200, ClinicalJsonMapper.toAuditListJson(logs));
+        }
+
+        private void handleSearchImagingStudies(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("RADIOLOGIST") && !principal.isUserInRole("DOCTOR")
+                    && !principal.isUserInRole("TENANT_ADMIN") && !principal.isUserInRole("SUPER_ADMIN")
+                    && !principal.isUserInRole("AUDITOR")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Vos habilitations ne permettent pas de consulter les examens d'imagerie.\"}");
+                return;
+            }
+
+            UUID patientId = null;
+            String rawQuery = exchange.getRequestURI().getQuery();
+            if (rawQuery != null) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2 && "patientId".equalsIgnoreCase(kv[0])) {
+                        try { patientId = UUID.fromString(kv[1]); } catch (Exception ignored) {}
+                    }
+                }
+            }
+
+            List<ImagingStudy> list = imagingService.searchStudies(principal.getTenantId(), patientId, principal.getRoles());
+            sendJson(exchange, 200, ImagingJsonMapper.toStudyListJson(list));
+        }
+
+        private void handleCreateImagingStudy(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("RADIOLOGIST") && !principal.isUserInRole("DOCTOR") && !principal.isUserInRole("TENANT_ADMIN")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul le personnel d'imagerie ou médical peut créer une étude radiologique.\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            ImagingStudy study = ImagingJsonMapper.parseStudy(body, principal.getTenantId(), principal.getUserId(), principal.getName());
+            imagingService.createStudy(study, principal.getUserId(), principal.getName(), principal.getRoles().iterator().next(), principal.getTenantId());
+            sendJson(exchange, 201, ImagingJsonMapper.toJson(study));
+        }
+
+        private void handleImagingStudyAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+            String method = exchange.getRequestMethod();
+
+            if (!tail.contains("/")) {
+                if (!"GET".equalsIgnoreCase(method)) {
+                    sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode non autorisée.\"}");
+                    return;
+                }
+                UUID studyId;
+                try {
+                    studyId = UUID.fromString(tail);
+                } catch (Exception e) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID d'examen invalide.\"}");
+                    return;
+                }
+                Optional<ImagingStudy> opt = imagingService.findStudyById(studyId);
+                if (opt.isEmpty()) {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Examen introuvable\",\"status\":404,\"detail\":\"Aucun examen radiologique trouvé pour: " + studyId + "\"}");
+                    return;
+                }
+                sendJson(exchange, 200, ImagingJsonMapper.toJson(opt.get()));
+                return;
+            }
+
+            String[] parts = tail.split("/", 2);
+            UUID studyId;
+            try {
+                studyId = UUID.fromString(parts[0]);
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID d'examen invalide.\"}");
+                return;
+            }
+
+            String action = parts[1];
+
+            if ("ai-analyze".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("RADIOLOGIST") && !principal.isUserInRole("DOCTOR")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul un médecin ou un radiologue peut déclencher une inférence d'IA clinique.\"}");
+                    return;
+                }
+                try {
+                    ImagingStudy analyzed = imagingService.triggerAiAnalysis(studyId, principal.getUserId(), principal.getName(), principal.getRoles().iterator().next(), principal.getTenantId());
+                    sendJson(exchange, 200, ImagingJsonMapper.toJson(analyzed));
+                } catch (IllegalArgumentException e) {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Examen introuvable\",\"status\":404,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+                return;
+            }
+
+            if ("report".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("RADIOLOGIST") && !principal.isUserInRole("DOCTOR")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul un radiologue ou un médecin peut signer un compte-rendu radiologique officiel.\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                String role = principal.isUserInRole("RADIOLOGIST") ? "RADIOLOGIST" : "DOCTOR";
+                RadiologistReport report = ImagingJsonMapper.parseReport(body, studyId, principal.getUserId(), principal.getName(), role);
+                try {
+                    ImagingStudy reported = imagingService.addRadiologistReport(studyId, report, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, ImagingJsonMapper.toJson(reported));
+                } catch (IllegalArgumentException e) {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Examen introuvable\",\"status\":404,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+                return;
+            }
+
+            sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Action inconnue\",\"status\":404,\"detail\":\"Action introuvable: " + action + "\"}");
         }
 
         private MedscanSecurityContext authenticate(HttpExchange exchange) throws IOException {

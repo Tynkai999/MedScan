@@ -263,6 +263,81 @@ paths:
         '200':
           description: Audit events list
 
+  /v1/imaging/studies:
+    get:
+      summary: Search imaging studies within tenant
+      operationId: searchImagingStudies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patientId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of imaging studies
+    post:
+      summary: Upload and register a new medical imaging study
+      operationId: createImagingStudy
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Imaging study created
+
+  /v1/imaging/studies/{id}:
+    get:
+      summary: Retrieve an imaging study with AI predictions and radiologist report
+      operationId: getImagingStudy
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Imaging study details
+
+  /v1/imaging/studies/{id}/ai-analyze:
+    post:
+      summary: Trigger decoupled AI clinical computer vision inference
+      operationId: triggerAiInference
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: AI analysis completed with confidence score and Grad-CAM heatmap
+
+  /v1/imaging/studies/{id}/report:
+    post:
+      summary: Validate and sign official radiologist report
+      operationId: submitRadiologistReport
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Report officially validated
+
 components:
   securitySchemes:
     BearerAuth:

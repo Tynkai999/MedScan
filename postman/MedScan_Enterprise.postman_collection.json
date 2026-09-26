@@ -1424,6 +1424,119 @@
           }
         }
       ]
+    },
+    {
+      "name": "08 - Imagerie Médicale & IA Clinique (MOD-05 & MOD-06)",
+      "item": [
+        {
+          "name": "01. Lister les Examens Radiologiques (Radiologue)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{radiologist_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/imaging/studies",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "imaging",
+                "studies"
+              ]
+            },
+            "description": "Liste des examens d'imagerie médicale de l'établissement."
+          }
+        },
+        {
+          "name": "02. Consulter Examen Radiologique (Médecin / Radiologue)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/imaging/studies/c0000000-0000-0000-0000-000000000001",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "imaging",
+                "studies",
+                "c0000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "description": "Récupère le cliché, les résultats de prédiction d'IA et le compte-rendu radiologique."
+          }
+        },
+        {
+          "name": "03. Déclencher Analyse par Modèle d IA (Médecin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/imaging/studies/c0000000-0000-0000-0000-000000000001/ai-analyze",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "imaging",
+                "studies",
+                "c0000000-0000-0000-0000-000000000001",
+                "ai-analyze"
+              ]
+            },
+            "description": "Inférence automatique : score de confiance, anomalies détectées et heatmap Grad-CAM."
+          }
+        },
+        {
+          "name": "04. Valider Compte-Rendu Radiologique Officiel (Radiologue)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{radiologist_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conclusion\": \"Confirmation formelle du r\\u00e9sultat de l'IA. Absence d'anomalie pleuro-parenchymateuse \\u00e9volutive.\",\n  \"aiAgreementStatus\": \"AGREED\",\n  \"recommendedActions\": \"Surveillance clinique standard et maintien du protocole asthme.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/imaging/studies/c0000000-0000-0000-0000-000000000001/report",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "imaging",
+                "studies",
+                "c0000000-0000-0000-0000-000000000001",
+                "report"
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }
