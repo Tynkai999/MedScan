@@ -17,6 +17,7 @@ public final class UserJsonMapper {
         if (u == null) return "null";
         StringBuilder sb = new StringBuilder();
         sb.append("{");
+        sb.append("\"id\":\"").append(u.userId()).append("\",");
         sb.append("\"userId\":\"").append(u.userId()).append("\",");
         sb.append("\"username\":\"").append(JsonHelper.escape(u.username())).append("\",");
         sb.append("\"email\":\"").append(JsonHelper.escape(u.email())).append("\",");

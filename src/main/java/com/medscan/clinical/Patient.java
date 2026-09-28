@@ -1,4 +1,4 @@
-package com.medscan.clinical;
+ package com.medscan.clinical;
 
 import java.time.Instant;
 import java.time.LocalDate;
