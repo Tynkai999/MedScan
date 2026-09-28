@@ -5,7 +5,8 @@
 **Version du système** : `0.1.0-SNAPSHOT` (Architecture Validée & Déployée)  
 **Environnement de production actif** : [`https://medscan-sluw.onrender.com/medscan/api`](https://medscan-sluw.onrender.com/medscan/api)  
 **Dépôt officiel** : [`https://github.com/Tynkai999/MedScan.git`](https://github.com/Tynkai999/MedScan.git) (Branche `main`)  
-**Statut global de la suite de tests** : **53/53 tests passants (100% au vert)**
+**Statut global de la suite de tests** : **59/59 tests passants (100% au vert)**  
+**Nouveautés Récentes** : Constantes Vitales Enrichies (Groupe Sanguin, Allergies, SpO2, IMC, Triage) + Tableaux de Bord Multi-Acteurs (`/v1/dashboard/stats`).
 
 ---
 
