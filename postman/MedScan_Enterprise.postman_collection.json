@@ -1725,6 +1725,147 @@
           }
         }
       ]
+    },
+    {
+      "name": "10 - Organisations & Personnel Dynamique (Tenants & IAM)",
+      "item": [
+        {
+          "name": "01. Lister les Organisations (Super Admin / Tenant Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superadmin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenants",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenants"
+              ]
+            },
+            "description": "Lister l'ensemble des structures de santé enregistrées dynamiquement."
+          }
+        },
+        {
+          "name": "02. Enregistrer une Organisation de Santé (Super Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superadmin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"CLINIQUE_SAINTE_ANNE\",\n  \"name\": \"Clinique Internationale Sainte Anne\",\n  \"type\": \"CLINIC\",\n  \"country\": \"Burkina Faso\",\n  \"city\": \"Bobo-Dioulasso\",\n  \"phone\": \"+226 20 98 00 11\",\n  \"email\": \"contact@sainteanne.bf\",\n  \"address\": \"Boulevard de la Révolution, Bobo-Dioulasso\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenants",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenants"
+              ]
+            },
+            "description": "Enregistrer dynamiquement une nouvelle structure de santé (hôpital, clinique, pharmacie, etc.)."
+          }
+        },
+        {
+          "name": "03. Lister le Personnel Médical & Utilisateurs (Tenant Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantadmin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "users"
+              ]
+            },
+            "description": "Lister le personnel de l'établissement administré (cloisonnement strict)."
+          }
+        },
+        {
+          "name": "04. Créer Dynamiquement un Médecin (Tenant Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantadmin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"dr.kone@chu-ouaga.bf\",\n  \"password\": \"Password123!\",\n  \"email\": \"dr.kone@chu-ouaga.bf\",\n  \"displayName\": \"Dr. Aïcha Kone\",\n  \"role\": \"DOCTOR\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "users"
+              ]
+            },
+            "description": "Ajouter dynamiquement un médecin avec calcul automatique de ses privilèges RBAC."
+          }
+        },
+        {
+          "name": "05. Connexion Immédiate du Nouvel Utilisateur Créé",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"dr.kone@chu-ouaga.bf\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Vérifier que le nouvel utilisateur peut s'authentifier immédiatement sans redémarrage."
+          }
+        }
+      ]
     }
   ]
 }

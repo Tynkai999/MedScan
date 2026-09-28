@@ -124,6 +124,153 @@ paths:
         '401':
           description: Invalid or expired refresh token
 
+  /v1/tenants:
+    get:
+      summary: List all healthcare facilities and tenant structures
+      operationId: listTenants
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of registered tenants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tenant'
+    post:
+      summary: Register a new healthcare facility / tenant (Super-Admin only)
+      operationId: createTenant
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                code:
+                  type: string
+                  example: CLINIQUE_SAINT_CAMILLE
+                name:
+                  type: string
+                  example: Clinique Saint Camille de Ouagadougou
+                type:
+                  type: string
+                  example: CLINIC
+                country:
+                  type: string
+                  example: Burkina Faso
+                city:
+                  type: string
+                  example: Ouagadougou
+                phone:
+                  type: string
+                email:
+                  type: string
+                address:
+                  type: string
+      responses:
+        '201':
+          description: Tenant created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '403':
+          description: Forbidden - Only SUPER_ADMIN allowed
+
+  /v1/tenants/{id}:
+    get:
+      summary: Retrieve a healthcare facility by UUID
+      operationId: getTenant
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tenant details
+        '404':
+          description: Tenant not found
+
+  /v1/users:
+    get:
+      summary: List staff accounts within tenant or globally for platform admins
+      operationId: listUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of staff accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserAccount'
+        '403':
+          description: Forbidden
+    post:
+      summary: Provision a new healthcare professional or staff account (Tenant Admin / Super Admin)
+      operationId: createUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, role]
+              properties:
+                username:
+                  type: string
+                  example: dr.barro@ch-ouaga.bf
+                email:
+                  type: string
+                  example: dr.barro@ch-ouaga.bf
+                password:
+                  type: string
+                  example: Password123!
+                displayName:
+                  type: string
+                  example: Dr. Souleymane Barro (Chirurgien)
+                role:
+                  type: string
+                  enum: [DOCTOR, NURSE, PHARMACIST, RADIOLOGIST, LAB_TECHNICIAN, DELIVERY_AGENT, TENANT_ADMIN]
+                  example: DOCTOR
+                tenantId:
+                  type: string
+                  format: uuid
+                  description: Optional for TENANT_ADMIN (defaults to admin tenant), required for SUPER_ADMIN
+      responses:
+        '201':
+          description: Staff account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAccount'
+        '400':
+          description: Invalid request payload
+        '403':
+          description: Forbidden
+
   /v1/patients:
     get:
       summary: Search patients within authenticated actor's tenant
@@ -513,6 +660,74 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          example: CH_OUAGADOUGOU
+        name:
+          type: string
+          example: Centre Hospitalier Universitaire de Ouagadougou
+        type:
+          type: string
+          example: HOSPITAL
+        country:
+          type: string
+          example: Burkina Faso
+        city:
+          type: string
+          example: Ouagadougou
+        phone:
+          type: string
+        email:
+          type: string
+        address:
+          type: string
+        status:
+          type: string
+          example: ACTIVE
+        createdAt:
+          type: string
+          format: date-time
+
+    UserAccount:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+          example: dr.barro@ch-ouaga.bf
+        email:
+          type: string
+          example: dr.barro@ch-ouaga.bf
+        displayName:
+          type: string
+          example: Dr. Souleymane Barro (Chirurgien)
+        tenantId:
+          type: string
+          format: uuid
+        tenantCode:
+          type: string
+          example: CH_OUAGADOUGOU
+        roles:
+          type: array
+          items:
+            type: string
+          example: ["DOCTOR"]
+        permissions:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          example: ACTIVE
+
     Patient:
       type: object
       properties:

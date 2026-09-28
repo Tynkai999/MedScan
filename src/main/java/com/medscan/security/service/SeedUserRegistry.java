@@ -1,20 +1,22 @@
 package com.medscan.security.service;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import com.medscan.security.Role;
 import jakarta.enterprise.context.ApplicationScoped;
 
 /**
- * Registry of deterministic seed users representing all 10 system actors.
- * Enables immediate local development in Eclipse and automated testing,
- * synchronized with Keycloak pre-configured users.
+ * Registry of deterministic seed users representing all 10 system actors,
+ * with full dynamic provisioning capabilities for Tenant Administrators and Super Admin.
  */
 @ApplicationScoped
 public class SeedUserRegistry {
@@ -28,8 +30,8 @@ public class SeedUserRegistry {
 
     public static final String DEFAULT_PASSWORD = "Password123!";
 
-    private final Map<String, ActorAccount> usersByUsername = new HashMap<>();
-    private final Map<UUID, ActorAccount> usersById = new HashMap<>();
+    private final Map<String, ActorAccount> usersByUsername = new ConcurrentHashMap<>();
+    private final Map<UUID, ActorAccount> usersById = new ConcurrentHashMap<>();
 
     public SeedUserRegistry() {
         register(new ActorAccount(
@@ -143,9 +145,88 @@ public class SeedUserRegistry {
                 Set.of("audit:view", "audit:export", "compliance:review")));
     }
 
-    private void register(ActorAccount user) {
+    public synchronized ActorAccount register(ActorAccount user) {
+        if (user == null) {
+            throw new IllegalArgumentException("L'utilisateur ne peut pas être nul.");
+        }
         usersByUsername.put(user.username().toLowerCase(), user);
         usersById.put(user.userId(), user);
+        return user;
+    }
+
+    /**
+     * Crée et enregistre dynamiquement un membre du personnel soignant ou administratif.
+     * Permet aux administrateurs d'établissement d'ajouter des médecins, infirmiers, pharmaciens, etc.
+     */
+    public ActorAccount createStaffUser(
+            String username,
+            String email,
+            String password,
+            String displayName,
+            String roleName,
+            UUID tenantId,
+            String tenantCode
+    ) {
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("Le nom d'utilisateur est obligatoire.");
+        }
+        String cleanUsername = username.trim().toLowerCase();
+        if (usersByUsername.containsKey(cleanUsername)) {
+            throw new IllegalArgumentException("Un utilisateur existe déjà avec cet identifiant: " + cleanUsername);
+        }
+        if (password == null || password.length() < 6) {
+            throw new IllegalArgumentException("Le mot de passe doit comporter au moins 6 caractères.");
+        }
+        if (tenantId == null) {
+            throw new IllegalArgumentException("Le tenantId est obligatoire.");
+        }
+
+        Role role = Role.fromString(roleName)
+                .orElseThrow(() -> new IllegalArgumentException("Rôle soignant ou administrateur invalide: " + roleName));
+
+        Set<String> permissions = getDefaultPermissionsForRole(role);
+
+        ActorAccount account = new ActorAccount(
+                UUID.randomUUID(),
+                cleanUsername,
+                (email != null && !email.isBlank()) ? email.trim() : cleanUsername,
+                password,
+                tenantId,
+                (tenantCode != null && !tenantCode.isBlank()) ? tenantCode : "TENANT_" + tenantId.toString().substring(0, 8),
+                (displayName != null && !displayName.isBlank()) ? displayName.trim() : username,
+                Set.of(role.roleName()),
+                permissions
+        );
+
+        return register(account);
+    }
+
+    public static Set<String> getDefaultPermissionsForRole(Role role) {
+        return switch (role) {
+            case DOCTOR -> Set.of("patient:search", "patient:read", "consultation:write", "prescription:create", "exam:order", "break_glass:request");
+            case NURSE -> Set.of("patient:search", "patient:read", "vitals:record", "vitals:write", "patient:view_summary", "care:administer");
+            case PHARMACIST -> Set.of("prescription:verify", "prescription:dispense", "inventory:manage", "order:prepare");
+            case RADIOLOGIST -> Set.of("image:upload", "image:view", "ai:request_analysis", "report:validate");
+            case LAB_TECHNICIAN -> Set.of("lab:upload_results", "exam:view_pending");
+            case DELIVERY_AGENT -> Set.of("delivery:accept", "delivery:navigate", "delivery:complete_otp");
+            case TENANT_ADMIN -> Set.of("tenant:manage_users", "tenant:manage_departments", "tenant:view_audit");
+            case SUPER_ADMIN -> Set.of("platform:manage_tenants", "platform:manage_users", "platform:view_all_audit", "platform:configure");
+            case AUDITOR -> Set.of("audit:view", "audit:export", "compliance:review");
+            case PATIENT -> Set.of("patient:read_own", "consent:manage", "appointment:book", "prescription:view_own");
+        };
+    }
+
+    public boolean userExists(String username) {
+        if (username == null) return false;
+        return usersByUsername.containsKey(username.trim().toLowerCase());
+    }
+
+    public List<ActorAccount> findByTenantId(UUID tenantId) {
+        if (tenantId == null) return Collections.emptyList();
+        return usersById.values().stream()
+                .filter(u -> tenantId.equals(u.tenantId()))
+                .sorted((a, b) -> a.displayName().compareToIgnoreCase(b.displayName()))
+                .collect(Collectors.toList());
     }
 
     public Optional<ActorAccount> findByUsername(String username) {
@@ -163,6 +244,8 @@ public class SeedUserRegistry {
     }
 
     public Collection<ActorAccount> allActors() {
-        return Collections.unmodifiableCollection(usersByUsername.values());
+        List<ActorAccount> list = new ArrayList<>(usersByUsername.values());
+        list.sort((a, b) -> a.displayName().compareToIgnoreCase(b.displayName()));
+        return Collections.unmodifiableList(list);
     }
 }

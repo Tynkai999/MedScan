@@ -289,4 +289,146 @@ class MedscanServerTest {
         assertTrue(dossierBody.contains("\"bmi\":24.9"));
         assertTrue(dossierBody.contains("\"activiteCardio\":\"45 min marche quotidienne\""));
     }
+
+    @Test
+    @DisplayName("GET /v1/tenants liste les structures de santé enregistrées")
+    void testListTenantsEndpoint() throws Exception {
+        String docLogin = "{\"username\":\"doctor@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> loginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(docLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String token = JsonHelper.getString(loginResp.body(), "accessToken");
+
+        HttpResponse<String> resp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/tenants"))
+                .header("Authorization", "Bearer " + token)
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, resp.statusCode());
+        String body = resp.body();
+        assertTrue(body.contains("CH_OUAGADOUGOU"));
+        assertTrue(body.contains("PHARMA_CENTRALE"));
+        assertTrue(body.contains("LAB_BIO_SANTE"));
+    }
+
+    @Test
+    @DisplayName("POST /v1/tenants permet au Super-Admin d'ajouter une nouvelle structure de santé")
+    void testCreateTenantBySuperAdmin() throws Exception {
+        String adminLogin = "{\"username\":\"superadmin@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> loginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(adminLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String token = JsonHelper.getString(loginResp.body(), "accessToken");
+
+        String newTenantPayload = """
+                {
+                    "code": "CLINIQUE_SAINT_CAMILLE",
+                    "name": "Clinique Saint Camille de Ouagadougou",
+                    "type": "CLINIC",
+                    "city": "Ouagadougou",
+                    "country": "Burkina Faso",
+                    "phone": "+226 25 36 30 00",
+                    "email": "contact@saint-camille.bf"
+                }
+                """;
+
+        HttpResponse<String> resp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/tenants"))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(newTenantPayload)).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(201, resp.statusCode());
+        String body = resp.body();
+        assertTrue(body.contains("\"code\":\"CLINIQUE_SAINT_CAMILLE\""));
+        assertTrue(body.contains("\"type\":\"CLINIC\""));
+
+        // Vérification de la consultation de la nouvelle structure
+        String newId = JsonHelper.getString(body, "id");
+        HttpResponse<String> getResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/tenants/" + newId))
+                .header("Authorization", "Bearer " + token)
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, getResp.statusCode());
+        assertTrue(getResp.body().contains("Clinique Saint Camille de Ouagadougou"));
+    }
+
+    @Test
+    @DisplayName("POST /v1/tenants interdit l'ajout d'une structure à un médecin (403 Forbidden)")
+    void testCreateTenantForbiddenForDoctor() throws Exception {
+        String docLogin = "{\"username\":\"doctor@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> loginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(docLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String token = JsonHelper.getString(loginResp.body(), "accessToken");
+
+        String payload = "{\"name\":\"Clinique Non Autorisée\",\"code\":\"CLINIC_FRAUD\"}";
+        HttpResponse<String> resp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/tenants"))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload)).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(403, resp.statusCode());
+    }
+
+    @Test
+    @DisplayName("POST /v1/users permet au Tenant-Admin d'ajouter un médecin qui peut immédiatement se connecter")
+    void testCreateDoctorByTenantAdminAndImmediateLogin() throws Exception {
+        // 1. Connexion Tenant Admin (Admin de l'Hôpital CH_OUAGADOUGOU)
+        String adminLogin = "{\"username\":\"tenantadmin@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> loginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(adminLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String adminToken = JsonHelper.getString(loginResp.body(), "accessToken");
+
+        // 2. Le Tenant Admin inscrit un nouveau médecin dans son hôpital
+        String newDocUsername = "dr.barro@ch-ouaga.bf";
+        String createUserPayload = """
+                {
+                    "username": "dr.barro@ch-ouaga.bf",
+                    "email": "dr.barro@ch-ouaga.bf",
+                    "password": "DocPassword2026!",
+                    "displayName": "Dr. Souleymane Barro (Chirurgien)",
+                    "role": "DOCTOR"
+                }
+                """;
+
+        HttpResponse<String> createResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/users"))
+                .header("Authorization", "Bearer " + adminToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(createUserPayload)).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(201, createResp.statusCode());
+        String createBody = createResp.body();
+        assertTrue(createBody.contains("\"username\":\"dr.barro@ch-ouaga.bf\""));
+        assertTrue(createBody.contains("\"roles\":[\"DOCTOR\"]"));
+        assertTrue(createBody.contains("\"tenantCode\":\"CH_OUAGADOUGOU\""));
+
+        // 3. Le nouveau médecin se connecte immédiatement avec ses identifiants !
+        String docLogin = "{\"username\":\"" + newDocUsername + "\",\"password\":\"DocPassword2026!\"}";
+        HttpResponse<String> docLoginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(docLogin)).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, docLoginResp.statusCode());
+        String docToken = JsonHelper.getString(docLoginResp.body(), "accessToken");
+        assertNotNull(docToken);
+
+        // 4. Le nouveau médecin accède à son portail médecin avec succès
+        HttpResponse<String> portalResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/portal/doctor"))
+                .header("Authorization", "Bearer " + docToken)
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, portalResp.statusCode());
+        assertTrue(portalResp.body().contains("\"authorizedRole\":\"DOCTOR\""));
+    }
 }

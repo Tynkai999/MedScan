@@ -20,36 +20,42 @@ import com.medscan.dashboard.ActorDashboardStats.CriticalAlert;
 import com.medscan.dashboard.ActorDashboardStats.RecentActivity;
 import com.medscan.imaging.ImagingService;
 import com.medscan.imaging.ImagingStudy;
+import com.medscan.security.tenant.TenantRegistry;
 
 /**
  * Service de calcul des statistiques consolidées de tableau de bord pour tous les acteurs de MedScan.
  * Intègre les métriques cliniques, alertes de constantes vitales, ordonnances, imagerie et audits.
+ * Résout dynamiquement les noms d'établissements via le TenantRegistry (zéro identifiant en dur).
  */
 public class DashboardService {
 
-    private static final UUID PLATFORM_TENANT = UUID.fromString("b47c7913-35d0-43e3-8ec1-5614dec9ffcd");
+    private static final UUID PLATFORM_TENANT = TenantRegistry.PLATFORM_TENANT_ID;
+    private static final TenantRegistry DEFAULT_TENANT_REGISTRY = new TenantRegistry();
 
     private final ClinicalService clinicalService;
     private final ImagingService imagingService;
+    private final TenantRegistry tenantRegistry;
 
-    public DashboardService(ClinicalService clinicalService, ImagingService imagingService) {
+    public DashboardService(ClinicalService clinicalService, ImagingService imagingService, TenantRegistry tenantRegistry) {
         this.clinicalService = clinicalService;
         this.imagingService = imagingService;
+        this.tenantRegistry = (tenantRegistry != null) ? tenantRegistry : DEFAULT_TENANT_REGISTRY;
+    }
+
+    public DashboardService(ClinicalService clinicalService, ImagingService imagingService) {
+        this(clinicalService, imagingService, DEFAULT_TENANT_REGISTRY);
     }
 
     public ActorDashboardStats getDashboardStats(UUID userId, String username, String role, UUID tenantId) {
         return getDashboardStats(userId, username, role, tenantId, resolveTenantName(tenantId));
     }
 
-    public static String resolveTenantName(UUID tenantId) {
-        if (tenantId == null) return "MEDSCAN_SYS";
-        if (UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a").equals(tenantId)) return "CH_OUAGADOUGOU";
-        if (UUID.fromString("82961773-9273-4fef-bdd9-01adcdd51d89").equals(tenantId)) return "PHARMA_CENTRALE";
-        if (UUID.fromString("95705328-0183-4248-8da7-8691ecf284e6").equals(tenantId)) return "LAB_BIO_SANTE";
-        if (UUID.fromString("ddfd4bda-a3a7-401a-a701-3ef502072705").equals(tenantId)) return "EXPRESS_MEDIC";
-        if (UUID.fromString("b47c7913-35d0-43e3-8ec1-5614dec9ffcd").equals(tenantId)) return "MEDSCAN_SYS";
-        if (UUID.fromString("f56de30f-c802-42c6-8587-707a8d1a9814").equals(tenantId)) return "CLINIQUE_DES_ALBIES";
-        return "ORGANISATION_SANTE";
+    public String resolveTenantName(UUID tenantId) {
+        return tenantRegistry.resolveTenantName(tenantId);
+    }
+
+    public static String resolveTenantNameStatic(UUID tenantId) {
+        return DEFAULT_TENANT_REGISTRY.resolveTenantName(tenantId);
     }
 
     public ActorDashboardStats getDashboardStats(UUID userId, String username, String role, UUID tenantId, String tenantCode) {

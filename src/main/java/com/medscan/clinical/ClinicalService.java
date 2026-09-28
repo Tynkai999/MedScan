@@ -12,6 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
+import com.medscan.security.tenant.TenantRegistry;
+
 /**
  * Service central du Dossier Médical Partagé (MOD-03), des Prescriptions (MOD-08),
  * des Accès d'Urgence Break-Glass (MOD-04) et du Journal d'Audit (MOD-11).
@@ -20,7 +22,7 @@ import java.util.stream.Collectors;
  */
 public class ClinicalService {
 
-    private static final UUID PLATFORM_TENANT = UUID.fromString("b47c7913-35d0-43e3-8ec1-5614dec9ffcd");
+    private static final UUID PLATFORM_TENANT = TenantRegistry.PLATFORM_TENANT_ID;
 
     private final Map<UUID, Patient> patientsById = new ConcurrentHashMap<>();
     private final Map<UUID, List<VitalSigns>> vitalsByPatientId = new ConcurrentHashMap<>();

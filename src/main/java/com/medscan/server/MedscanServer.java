@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -51,7 +52,11 @@ import com.medscan.security.service.AuthResult;
 import com.medscan.security.service.AuthService;
 import com.medscan.security.service.AuthenticationFailedException;
 import com.medscan.security.service.SeedUserRegistry;
+import com.medscan.security.service.UserJsonMapper;
+import com.medscan.security.tenant.Tenant;
 import com.medscan.security.tenant.TenantContext;
+import com.medscan.security.tenant.TenantJsonMapper;
+import com.medscan.security.tenant.TenantRegistry;
 import com.medscan.security.tenant.VerifiedTenantIdentity;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -69,6 +74,7 @@ public class MedscanServer {
 
     private int port;
     private HttpServer server;
+    private final TenantRegistry tenantRegistry;
     private final SeedUserRegistry userRegistry;
     private final JwtTokenService tokenService;
     private final AuthService authService;
@@ -80,6 +86,7 @@ public class MedscanServer {
 
     public MedscanServer(int port) {
         this.port = port;
+        this.tenantRegistry = new TenantRegistry();
         this.userRegistry = new SeedUserRegistry();
         this.tokenService = new JwtTokenService(new KeyPairProvider());
         this.authService = new AuthService(userRegistry, tokenService);
@@ -87,7 +94,15 @@ public class MedscanServer {
         this.portalResource = new ActorPortalResource(new TenantContext());
         this.clinicalService = new ClinicalService();
         this.imagingService = new ImagingService(clinicalService);
-        this.dashboardService = new DashboardService(clinicalService, imagingService);
+        this.dashboardService = new DashboardService(clinicalService, imagingService, tenantRegistry);
+    }
+
+    public TenantRegistry getTenantRegistry() {
+        return tenantRegistry;
+    }
+
+    public SeedUserRegistry getUserRegistry() {
+        return userRegistry;
     }
 
     public DashboardService getDashboardService() {
@@ -189,6 +204,20 @@ public class MedscanServer {
                     handleMe(exchange);
                 } else if (subPath.startsWith("/v1/portal/") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handlePortal(exchange, subPath.substring("/v1/portal/".length()));
+                } else if ((subPath.equals("/v1/tenants") || subPath.equals("/v1/admin/tenants")) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListTenants(exchange);
+                } else if ((subPath.equals("/v1/tenants") || subPath.equals("/v1/admin/tenants")) && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleCreateTenant(exchange);
+                } else if ((subPath.startsWith("/v1/tenants/") || subPath.startsWith("/v1/admin/tenants/")) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    String tail = subPath.startsWith("/v1/tenants/") ? subPath.substring("/v1/tenants/".length()) : subPath.substring("/v1/admin/tenants/".length());
+                    handleGetTenant(exchange, tail);
+                } else if ((subPath.equals("/v1/users") || subPath.equals("/v1/tenant/users")) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListUsers(exchange);
+                } else if ((subPath.equals("/v1/users") || subPath.equals("/v1/tenant/users")) && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleCreateUser(exchange);
+                } else if ((subPath.startsWith("/v1/users/") || subPath.startsWith("/v1/tenant/users/")) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    String tail = subPath.startsWith("/v1/users/") ? subPath.substring("/v1/users/".length()) : subPath.substring("/v1/tenant/users/".length());
+                    handleGetUser(exchange, tail);
                 } else if (subPath.equals("/v1/patients") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handleSearchPatients(exchange);
                 } else if (subPath.equals("/v1/patients") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -443,6 +472,223 @@ public class MedscanServer {
             json.append("}");
 
             sendJson(exchange, 200, json.toString());
+        }
+
+        // ==========================================
+        // GESTION DES STRUCTURES / TENANTS (MOD-01)
+        // ==========================================
+
+        private void handleListTenants(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+
+            List<Tenant> tenants = tenantRegistry.listAllTenants();
+            sendJson(exchange, 200, TenantJsonMapper.toListJson(tenants));
+        }
+
+        private void handleCreateTenant(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("SUPER_ADMIN")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Privilèges insuffisants\",\"status\":403,\"detail\":\"Seul le Super-Administrateur peut créer ou rattacher des structures de santé.\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String code = JsonHelper.getString(body, "code");
+            String name = JsonHelper.getString(body, "name");
+            String type = JsonHelper.getString(body, "type");
+            String country = JsonHelper.getString(body, "country");
+            String city = JsonHelper.getString(body, "city");
+            String phone = JsonHelper.getString(body, "phone");
+            String email = JsonHelper.getString(body, "email");
+            String address = JsonHelper.getString(body, "address");
+
+            if (name == null || name.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Champs obligatoires manquants\",\"status\":400,\"detail\":\"Le nom de la structure de santé est obligatoire.\"}");
+                return;
+            }
+
+            Tenant created;
+            try {
+                created = tenantRegistry.createTenant(code, name, type, country, city, phone, email, address);
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Données invalides\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                return;
+            }
+
+            clinicalService.logAudit(principal.getUserId(), principal.getName(), "SUPER_ADMIN", principal.getTenantId(),
+                    "TENANT_CREATED", "Tenant", created.id().toString(), "SUCCESS",
+                    "Création de la structure de santé: " + created.name() + " (" + created.code() + " - " + created.type() + ")");
+
+            sendJson(exchange, 201, TenantJsonMapper.toJson(created));
+        }
+
+        private void handleGetTenant(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+
+            UUID tenantId;
+            try {
+                tenantId = UUID.fromString(tail);
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID de tenant invalide.\"}");
+                return;
+            }
+
+            Optional<Tenant> opt = tenantRegistry.findById(tenantId);
+            if (opt.isEmpty()) {
+                sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Structure introuvable\",\"status\":404,\"detail\":\"Aucune structure de santé trouvée avec l'ID: " + tenantId + "\"}");
+                return;
+            }
+
+            sendJson(exchange, 200, TenantJsonMapper.toJson(opt.get()));
+        }
+
+        // ==========================================
+        // GESTION DU PERSONNEL / UTILISATEURS (MOD-01 / MOD-02)
+        // ==========================================
+
+        private void handleListUsers(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("SUPER_ADMIN") && !principal.isUserInRole("TENANT_ADMIN") && !principal.isUserInRole("AUDITOR")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seuls les administrateurs et auditeurs peuvent lister les utilisateurs.\"}");
+                return;
+            }
+
+            List<ActorAccount> users;
+            if (principal.isUserInRole("SUPER_ADMIN") || principal.isUserInRole("AUDITOR")) {
+                String filterTenant = null;
+                String rawQuery = exchange.getRequestURI().getQuery();
+                if (rawQuery != null) {
+                    for (String param : rawQuery.split("&")) {
+                        String[] kv = param.split("=", 2);
+                        if (kv.length == 2 && "tenantId".equalsIgnoreCase(kv[0])) {
+                            filterTenant = kv[1];
+                        }
+                    }
+                }
+                if (filterTenant != null && !filterTenant.isBlank()) {
+                    try {
+                        users = userRegistry.findByTenantId(UUID.fromString(filterTenant));
+                    } catch (Exception e) {
+                        users = Collections.emptyList();
+                    }
+                } else {
+                    users = new ArrayList<>(userRegistry.allActors());
+                }
+            } else {
+                users = userRegistry.findByTenantId(principal.getTenantId());
+            }
+
+            sendJson(exchange, 200, UserJsonMapper.toListJson(users));
+        }
+
+        private void handleCreateUser(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("SUPER_ADMIN") && !principal.isUserInRole("TENANT_ADMIN")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul un administrateur d'établissement ou le Super-Administrateur peut inscrire des utilisateurs.\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String username = JsonHelper.getString(body, "username");
+            String email = JsonHelper.getString(body, "email");
+            String password = JsonHelper.getString(body, "password");
+            String displayName = JsonHelper.getString(body, "displayName");
+            String roleName = JsonHelper.getString(body, "role");
+            String requestedTenantId = JsonHelper.getString(body, "tenantId");
+
+            if (username == null || username.isBlank() || roleName == null || roleName.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Champs requis manquants\",\"status\":400,\"detail\":\"Les champs 'username' et 'role' sont obligatoires.\"}");
+                return;
+            }
+
+            if (password == null || password.isBlank()) {
+                password = SeedUserRegistry.DEFAULT_PASSWORD;
+            }
+
+            UUID targetTenantId;
+            if (principal.isUserInRole("SUPER_ADMIN")) {
+                if (requestedTenantId != null && !requestedTenantId.isBlank()) {
+                    try {
+                        targetTenantId = UUID.fromString(requestedTenantId);
+                    } catch (IllegalArgumentException e) {
+                        sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Tenant invalide\",\"status\":400,\"detail\":\"L'identifiant tenant n'est pas un UUID valide.\"}");
+                        return;
+                    }
+                } else {
+                    targetTenantId = principal.getTenantId();
+                }
+            } else {
+                targetTenantId = principal.getTenantId();
+            }
+
+            Optional<Tenant> tenantOpt = tenantRegistry.findById(targetTenantId);
+            if (tenantOpt.isEmpty()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Structure inconnue\",\"status\":400,\"detail\":\"Aucune structure de santé trouvée avec l'ID: " + targetTenantId + "\"}");
+                return;
+            }
+            Tenant targetTenant = tenantOpt.get();
+
+            ActorAccount created;
+            try {
+                created = userRegistry.createStaffUser(
+                        username,
+                        email,
+                        password,
+                        displayName,
+                        roleName,
+                        targetTenant.id(),
+                        targetTenant.code()
+                );
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur de création\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                return;
+            }
+
+            String actorRole = principal.getRoles().iterator().next();
+            clinicalService.logAudit(principal.getUserId(), principal.getName(), actorRole, principal.getTenantId(),
+                    "STAFF_USER_CREATED", "User", created.userId().toString(), "SUCCESS",
+                    "Création du compte " + created.roles() + " : " + created.displayName() + " (" + created.username() + ") rattaché à " + targetTenant.name());
+
+            sendJson(exchange, 201, UserJsonMapper.toJson(created));
+        }
+
+        private void handleGetUser(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            UUID userId;
+            try {
+                userId = UUID.fromString(tail);
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID utilisateur invalide.\"}");
+                return;
+            }
+
+            Optional<ActorAccount> opt = userRegistry.findById(userId);
+            if (opt.isEmpty()) {
+                sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Utilisateur introuvable\",\"status\":404,\"detail\":\"Aucun utilisateur trouvé avec l'identifiant: " + userId + "\"}");
+                return;
+            }
+
+            ActorAccount account = opt.get();
+            if (!principal.isUserInRole("SUPER_ADMIN") && !principal.isUserInRole("AUDITOR") && !account.tenantId().equals(principal.getTenantId())) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Cloisonnement actif\",\"status\":403,\"detail\":\"Accès refusé au profil d'un membre d'un autre établissement.\"}");
+                return;
+            }
+
+            sendJson(exchange, 200, UserJsonMapper.toJson(account));
         }
 
         private void handleSearchPatients(HttpExchange exchange) throws IOException {

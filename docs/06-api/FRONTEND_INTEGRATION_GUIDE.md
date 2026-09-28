@@ -584,7 +584,7 @@ Conformément à la déontologie médicale, l'IA ne valide jamais seule un diagn
 
 ---
 
-### 4.12 Tableaux de Bord & Statistiques Métier Multi-Acteurs (MOD-02 / MOD-03)
+### 4.13 Tableaux de Bord & Statistiques Métier Multi-Acteurs (MOD-02 / MOD-03)
 Permet à l'application frontend d'alimenter les tableaux de bord personnalisés de chaque acteur (Médecin, Pharmacien, Radiologue, Infirmier, Patient, Livreur, Administrateur, Auditeur DPO) avec des KPIs consolidés, alertes cliniques de triage et tendances en une seule requête.
 
 - **Méthode** : `GET`
@@ -674,6 +674,95 @@ Permet à l'application frontend d'alimenter les tableaux de bord personnalisés
   }
 }
 ```
+
+---
+
+### 4.14 Provisioning Dynamique des Organisations (Tenants) & Personnel Médical (MOD-01 / IAM)
+
+L'architecture MedScan Enterprise permet l'enregistrement à chaud des structures de santé (hôpitaux, cliniques, pharmacies d'officine, laboratoires, centres d'imagerie) et la création dynamique des comptes utilisateurs/personnel soignant sans aucun redémarrage ni identifiants en dur.
+
+#### 4.14.1 Liste des Structures de Santé (Tenants)
+Permet à l'administrateur de lister l'ensemble des établissements enregistrés sur la plateforme.
+- **Méthode** : `GET`
+- **Chemin** : `/v1/tenants` (alias : `/v1/admin/tenants`)
+- **Permissions requises** : `SUPER_ADMIN` ou `TENANT_ADMIN`
+- **Réponse Succès (200 OK)** :
+```json
+[
+  {
+    "id": "e2241595-e068-46f7-8e82-ab2b9dd3c18a",
+    "code": "CH_OUAGADOUGOU",
+    "name": "Centre Hospitalier Universitaire de Ouagadougou",
+    "type": "HOSPITAL",
+    "country": "Burkina Faso",
+    "city": "Ouagadougou",
+    "phone": "+226 25 30 65 00",
+    "email": "contact@chu-ouaga.bf",
+    "address": "Avenue de l'Hôpital, Ouagadougou",
+    "status": "ACTIVE",
+    "createdAt": "2026-09-01T00:00:00Z"
+  }
+]
+```
+
+#### 4.14.2 Enregistrement d'un Nouvel Établissement (Tenant)
+Permet au Super-Administrateur MedScan d'enregistrer une nouvelle entité de soins.
+- **Méthode** : `POST`
+- **Chemin** : `/v1/tenants` (alias : `/v1/admin/tenants`)
+- **Permissions requises** : `SUPER_ADMIN` uniquement
+- **Corps de Requête** :
+```json
+{
+  "code": "CLINIQUE_SAINTE_ANNE",
+  "name": "Clinique Internationale Sainte Anne",
+  "type": "CLINIC",
+  "country": "Burkina Faso",
+  "city": "Bobo-Dioulasso",
+  "phone": "+226 20 98 00 11",
+  "email": "contact@sainteanne.bf",
+  "address": "Boulevard de la Révolution, Bobo-Dioulasso"
+}
+```
+- **Réponse Succès (201 Created)** : Retourne l'objet `Tenant` créé avec son UUID unique généré.
+
+#### 4.14.3 Liste du Personnel & Utilisateurs
+Permet de lister les comptes utilisateurs. Un administrateur d'établissement (`TENANT_ADMIN`) ne verra que le personnel rattaché à son propre établissement (cloisonnement strict), tandis qu'un `SUPER_ADMIN` a une visibilité globale.
+- **Méthode** : `GET`
+- **Chemin** : `/v1/users` (alias : `/v1/tenant/users`)
+- **Permissions requises** : `SUPER_ADMIN` ou `TENANT_ADMIN`
+- **Réponse Succès (200 OK)** :
+```json
+[
+  {
+    "id": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
+    "username": "doctor@medscan.org",
+    "email": "doctor@medscan.org",
+    "displayName": "Dr. Seydou Traore",
+    "tenantId": "e2241595-e068-46f7-8e82-ab2b9dd3c18a",
+    "tenantCode": "CH_OUAGADOUGOU",
+    "roles": ["DOCTOR"],
+    "permissions": ["PATIENT_READ", "PATIENT_WRITE", "CLINICAL_WRITE", "PRESCRIPTION_WRITE"]
+  }
+]
+```
+
+#### 4.14.4 Création Dynamique d'un Membre du Personnel (Médecin, Infirmier, etc.)
+Permet au Super-Admin ou à l'Admin d'Établissement d'ajouter immédiatement un utilisateur. Les permissions RBAC associées au rôle sont automatiquement attribuées et l'utilisateur peut se connecter sur-le-champ via `/v1/auth/login`.
+- **Méthode** : `POST`
+- **Chemin** : `/v1/users` (alias : `/v1/tenant/users`)
+- **Permissions requises** : `SUPER_ADMIN` ou `TENANT_ADMIN` (le Tenant Admin crée automatiquement l'utilisateur dans son propre établissement).
+- **Corps de Requête** :
+```json
+{
+  "username": "dr.kone@chu-ouaga.bf",
+  "password": "Password123!",
+  "email": "dr.kone@chu-ouaga.bf",
+  "displayName": "Dr. Aïcha Kone",
+  "role": "DOCTOR",
+  "tenantId": "e2241595-e068-46f7-8e82-ab2b9dd3c18a"
+}
+```
+- **Réponse Succès (201 Created)** : Retourne l'objet `UserAccount` sécurisé créé.
 
 ---
 
@@ -955,6 +1044,39 @@ export const MedscanApi = {
   // Valider et signer le compte-rendu radiologique (Médecin / Radiologue)
   submitRadiologistReport: async (studyId: string, report: { conclusion: string; aiAgreementStatus: string; recommendedActions?: string }) => {
     const res = await apiClient.post(`/v1/imaging/studies/${studyId}/report`, report);
+    return res.data;
+  },
+
+  // Tableau de bord & KPIs consolidés (Médecin, Pharmacien, Patient, etc.)
+  getDashboardStats: async (role?: string) => {
+    const res = await apiClient.get('/v1/dashboard/stats', { params: role ? { role } : {} });
+    return res.data;
+  },
+
+  // Gestion des Établissements / Organisations (Super-Admin / Tenant-Admin)
+  listTenants: async () => {
+    const res = await apiClient.get('/v1/tenants');
+    return res.data;
+  },
+
+  getTenant: async (id: string) => {
+    const res = await apiClient.get(`/v1/tenants/${id}`);
+    return res.data;
+  },
+
+  createTenant: async (tenantData: { code: string; name: string; type: string; country?: string; city?: string; phone?: string; email?: string; address?: string }) => {
+    const res = await apiClient.post('/v1/tenants', tenantData);
+    return res.data;
+  },
+
+  // Gestion du Personnel de Santé (Super-Admin / Tenant-Admin)
+  listStaffUsers: async () => {
+    const res = await apiClient.get('/v1/users');
+    return res.data;
+  },
+
+  createStaffUser: async (userData: { username: string; password?: string; email: string; displayName: string; role: string; tenantId?: string }) => {
+    const res = await apiClient.post('/v1/users', userData);
     return res.data;
   },
 };
