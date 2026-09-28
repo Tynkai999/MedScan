@@ -522,11 +522,6 @@ public class MedscanServer {
             String method = exchange.getRequestMethod();
 
             if (!tail.contains("/")) {
-                if (!"GET".equalsIgnoreCase(method)) {
-                    sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Seule la méthode GET est acceptée sur cette ressource.\"}");
-                    return;
-                }
-
                 UUID patientId;
                 try {
                     patientId = UUID.fromString(tail);
@@ -547,16 +542,36 @@ public class MedscanServer {
                 }
 
                 Patient patient = opt.get();
-                var vitals = clinicalService.getVitalSigns(patientId);
-                var consultations = clinicalService.getConsultations(patientId);
-                var prescriptions = clinicalService.getPrescriptionsForPatient(patientId);
 
-                clinicalService.logAudit(principal.getUserId(), principal.getName(),
-                        principal.getRoles().iterator().next(), principal.getTenantId(),
-                        "PATIENT_DOSSIER_ACCESSED", "Patient", patientId.toString(), "SUCCESS",
-                        "Consultation du dossier médical complet de " + patient.fullName());
+                if ("GET".equalsIgnoreCase(method)) {
+                    var vitals = clinicalService.getVitalSigns(patientId);
+                    var consultations = clinicalService.getConsultations(patientId);
+                    var prescriptions = clinicalService.getPrescriptionsForPatient(patientId);
 
-                sendJson(exchange, 200, ClinicalJsonMapper.toDossierJson(patient, vitals, consultations, prescriptions));
+                    clinicalService.logAudit(principal.getUserId(), principal.getName(),
+                            principal.getRoles().iterator().next(), principal.getTenantId(),
+                            "PATIENT_DOSSIER_ACCESSED", "Patient", patientId.toString(), "SUCCESS",
+                            "Consultation du dossier médical complet de " + patient.fullName());
+
+                    sendJson(exchange, 200, ClinicalJsonMapper.toDossierJson(patient, vitals, consultations, prescriptions));
+                    return;
+                }
+
+                if ("PUT".equalsIgnoreCase(method) || "PATCH".equalsIgnoreCase(method)) {
+                    if (!principal.isUserInRole("DOCTOR") && !principal.isUserInRole("NURSE")
+                            && !principal.isUserInRole("TENANT_ADMIN") && !principal.isUserInRole("SUPER_ADMIN")) {
+                        sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul le personnel soignant ou administratif autorisé peut mettre à jour un dossier patient.\"}");
+                        return;
+                    }
+                    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    Patient updated = ClinicalJsonMapper.parsePatientUpdate(body, patient);
+                    String role = principal.getRoles().iterator().next();
+                    Patient saved = clinicalService.updatePatient(patientId, updated, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, ClinicalJsonMapper.toJson(saved));
+                    return;
+                }
+
+                sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthodes autorisées: GET, PUT, PATCH\"}");
                 return;
             }
 
@@ -621,8 +636,8 @@ public class MedscanServer {
                     }
                     String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                     Consultation consultation = ClinicalJsonMapper.parseConsultation(body, patientId, principal.getUserId(), principal.getName(), principal.getTenantId());
-                    clinicalService.recordConsultation(consultation, principal.getUserId(), principal.getName(), "DOCTOR", principal.getTenantId());
-                    sendJson(exchange, 201, ClinicalJsonMapper.toJson(consultation));
+                    Consultation recorded = clinicalService.recordConsultation(consultation, principal.getUserId(), principal.getName(), "DOCTOR", principal.getTenantId());
+                    sendJson(exchange, 201, ClinicalJsonMapper.toJson(recorded));
                     return;
                 }
                 sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthodes autorisées: GET, POST\"}");

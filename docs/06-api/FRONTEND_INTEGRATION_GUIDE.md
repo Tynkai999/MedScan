@@ -362,8 +362,32 @@ Permet aux médecins et soignants de rechercher ou créer un patient au sein de 
 }
 ```
 
+- **Mise à Jour du Dossier Patient & Biométrie (Médecin / Infirmier)** : `PUT /v1/patients/{id}`
+  - Rôles autorisés : `DOCTOR`, `NURSE`, `TENANT_ADMIN`, `SUPER_ADMIN`
+  - Permet de mettre à jour le nom, prénom, date de naissance, poids, taille, groupe sanguin, allergies, contact d'urgence, et d'ajouter des **champs personnalisés dynamiques** propres au profil du patient (ex: antécédents spécifiques, périmètre abdominal, profession, tabagisme).
+  - **Calcul Automatique de l'IMC** : Dès que `weightKg` et `heightCm` sont fournis ou mis à jour, l'IMC (`bmi`) et sa classification clinique OMS (`bmiCategory`) sont instantanément recalculés par l'API (ex: 70kg / 1.75m -> IMC 22.9 : "Corpulence normale").
+  - Corps de requête :
+```json
+{
+  "firstName": "Fatou",
+  "lastName": "Ouedraogo",
+  "birthDate": "1994-06-18",
+  "weightKg": 64.0,
+  "heightCm": 168.0,
+  "bloodGroup": "A+",
+  "customFields": {
+    "perimetreAbdominal": "76 cm",
+    "tabagisme": "0 paquet/jour",
+    "profession": "Enseignante",
+    "statutGrossesse": "Non enceinte",
+    "antecedentChirurgical": "Appendicectomie en 2018"
+  }
+}
+```
+  - Réponse (200 OK) : Retourne le patient mis à jour avec `age` (32 ans), `bmi` (22.7), `bmiCategory` ("Corpulence normale") et le dictionnaire `customFields` enrichi.
+
 - **Consulter l'Historique des Constantes Enrichies & Bilan Clinique** : `GET /v1/patients/{id}/vitals`
-  - Retourne directement la liste des constantes avec le groupe sanguin, les allergies, comorbidités, SpO2, IMC calculé et le niveau d'alerte de triage (`NORMAL`, `ATTENTION`, `CRITICAL`).
+  - Retourne directement la liste des constantes avec le groupe sanguin, les allergies, comorbidités, SpO2, IMC calculé, classification et le niveau d'alerte de triage (`NORMAL`, `ATTENTION`, `CRITICAL`).
 
 - **Saisie de Constantes Vitales (Infirmier / Médecin)** : `POST /v1/patients/{id}/vitals`
 ```json
@@ -378,20 +402,38 @@ Permet aux médecins et soignants de rechercher ou créer un patient au sein de 
   "oxygenSaturation": 98.0,
   "respiratoryRate": 16,
   "painScale": 0,
+  "customFields": {
+    "glycemieCapillaire": "1.02 g/L",
+    "frequencePouls": "Régulier"
+  },
   "notes": "Patient calme, auscultation cardio-pulmonaire normale"
 }
 ```
-> **Héritage Automatique** : Si le groupe sanguin, les allergies ou le contact d'urgence ne sont pas ressaisis par l'infirmier, l'API les hérite et les renseigne automatiquement à partir du dossier maître du patient. De même, l'IMC (`bmi`) et le niveau de triage (`triageLevel`) sont calculés automatiquement s'ils sont omis.
+> **Héritage et Synchronisation Automatique** : Si le groupe sanguin, les allergies ou le contact d'urgence ne sont pas ressaisis par l'infirmier, l'API les hérite du dossier maître. Dès qu'un nouveau poids ou une nouvelle taille est mesurée, l'IMC (`bmi`) est calculé et le dossier maître du patient est synchronisé sans double saisie.
 
-- **Saisie d'une Consultation Clinique (Médecin)** : `POST /v1/patients/{id}/consultations`
+- **Saisie d'une Consultation Clinique avec Biométrie & Champs Personnalisés (Médecin)** : `POST /v1/patients/{id}/consultations`
 ```json
 {
-  "chiefComplaint": "Céphalées intenses et fièvre",
-  "examinationNotes": "Examen clinique complet. Absence de raideur de nuque.",
-  "diagnosis": "Accès palustre simple à Plasmodium falciparum",
-  "treatmentPlan": "Prescription CTA (Artéméther-Luméfantrine) + antipyrétiques."
+  "chiefComplaint": "Suivi métabolique et contrôle tensionnel",
+  "examinationNotes": "Examen cardio-vasculaire sans particularité. PA 122/80 mmHg.",
+  "diagnosis": "Profil anthropométrique optimal et tension équilibrée",
+  "treatmentPlan": "Poursuivre règles hygiéno-diététiques actuelles.",
+  "weightKg": 72.0,
+  "heightCm": 170.0,
+  "systolicBp": 122,
+  "diastolicBp": 80,
+  "heartRate": 68,
+  "temperature": 36.9,
+  "oxygenSaturation": 99.0,
+  "customFields": {
+    "perimetreAbdominal": "82 cm",
+    "regimeAlimentaire": "Hypo-sodé",
+    "activitePhysique": "30 min de marche par jour",
+    "observanceTherapeutique": "Excellente"
+  }
 }
 ```
+> **Calcul de l'IMC & Synchronisation Immédiate en Consultation** : Le médecin ou l'infirmier n'a pas besoin de calculer l'IMC manuellement. Lors de la validation de la consultation, l'API calcule instantanément l'IMC (ici `24.9` kg/m²), assigne la catégorie OMS (`"Corpulence normale"`), et met à jour en temps réel le dossier maître du patient avec les nouvelles valeurs anthropométriques et les champs personnalisés.
 
 ---
 
@@ -835,6 +877,12 @@ export const MedscanApi = {
   // Créer un nouveau patient
   createPatient: async (patientData: any) => {
     const res = await apiClient.post('/v1/patients', patientData);
+    return res.data;
+  },
+
+  // Mettre à jour les informations, biométrie et champs personnalisés d'un patient
+  updatePatient: async (patientId: string, updates: any) => {
+    const res = await apiClient.put(`/v1/patients/${patientId}`, updates);
     return res.data;
   },
 

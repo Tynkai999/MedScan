@@ -195,4 +195,98 @@ class MedscanServerTest {
         assertTrue(body.contains("\"recentActivities\""));
         assertTrue(body.contains("\"chartsData\""));
     }
+
+    @Test
+    @DisplayName("PUT /v1/patients/{id} permet au médecin/infirmier de mettre à jour le patient avec calcul d'IMC et champs personnalisés")
+    void testPatientUpdateEndpoint() throws Exception {
+        String docLogin = "{\"username\":\"doctor@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> loginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(docLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String token = JsonHelper.getString(loginResp.body(), "accessToken");
+
+        String fatouId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+        String updatePayload = """
+                {
+                    "weightKg": 68.0,
+                    "heightCm": 170.0,
+                    "customFields": {
+                        "circonferenceTaille": "78 cm",
+                        "statutProfessionnel": "Ingénieur Télécom"
+                    }
+                }
+                """;
+
+        HttpResponse<String> updateResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/patients/" + fatouId))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(updatePayload)).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, updateResp.statusCode());
+        String body = updateResp.body();
+        // 68 / (1.70^2) = 23.5
+        assertTrue(body.contains("\"bmi\":23.5"));
+        assertTrue(body.contains("\"bmiCategory\":\"Corpulence normale\""));
+        assertTrue(body.contains("\"circonferenceTaille\":\"78 cm\""));
+        assertTrue(body.contains("\"statutProfessionnel\":\"Ingénieur Télécom\""));
+    }
+
+    @Test
+    @DisplayName("POST /v1/patients/{id}/consultations calcule l'IMC et met à jour le dossier maître du patient")
+    void testConsultationCreationCalculatesBmiAndSyncsMasterRecord() throws Exception {
+        String docLogin = "{\"username\":\"doctor@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> loginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(docLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String token = JsonHelper.getString(loginResp.body(), "accessToken");
+
+        String fatouId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+        String consultPayload = """
+                {
+                    "chiefComplaint": "Examen de suivi pondéral et tensionnel",
+                    "examinationNotes": "Bon état général, constantes stables",
+                    "diagnosis": "Profil anthropométrique optimal",
+                    "treatmentPlan": "Maintenir alimentation équilibrée",
+                    "weightKg": 72.0,
+                    "heightCm": 170.0,
+                    "systolicBp": 122,
+                    "diastolicBp": 80,
+                    "heartRate": 68,
+                    "temperature": 36.9,
+                    "oxygenSaturation": 99.0,
+                    "customFields": {
+                        "activiteCardio": "45 min marche quotidienne",
+                        "suiviTensionnelDomicile": "Oui"
+                    }
+                }
+                """;
+
+        HttpResponse<String> consultResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/patients/" + fatouId + "/consultations"))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(consultPayload)).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(201, consultResp.statusCode());
+        String body = consultResp.body();
+        // 72 / (1.70^2) = 24.9
+        assertTrue(body.contains("\"bmi\":24.9"));
+        assertTrue(body.contains("\"bmiCategory\":\"Corpulence normale\""));
+        assertTrue(body.contains("\"activiteCardio\":\"45 min marche quotidienne\""));
+
+        // Vérifier que le dossier du patient reflète les nouvelles constantes et les customFields
+        HttpResponse<String> dossierResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/patients/" + fatouId))
+                .header("Authorization", "Bearer " + token)
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, dossierResp.statusCode());
+        String dossierBody = dossierResp.body();
+        assertTrue(dossierBody.contains("\"weightKg\":72.0"));
+        assertTrue(dossierBody.contains("\"bmi\":24.9"));
+        assertTrue(dossierBody.contains("\"activiteCardio\":\"45 min marche quotidienne\""));
+    }
 }

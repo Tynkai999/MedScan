@@ -91,8 +91,22 @@ public class ClinicalService {
         patientsById.put(patient.id(), patient);
         logAudit(actorId, actorUsername, actorRole, actorTenantId,
                 "PATIENT_CREATED", "Patient", patient.id().toString(), "SUCCESS",
-                "Création du dossier patient pour: " + patient.fullName() + " (" + patient.nationalId() + ")");
+                "Création du dossier patient pour: " + patient.fullName() + " (" + patient.nationalId() + ")" +
+                (patient.bmi() != null ? " [IMC: " + patient.bmi() + " - " + patient.bmiCategory() + "]" : ""));
         return patient;
+    }
+
+    public Patient updatePatient(UUID patientId, Patient updates, UUID actorId, String actorUsername, String actorRole, UUID actorTenantId) {
+        Patient existing = patientsById.get(patientId);
+        if (existing == null) {
+            throw new IllegalArgumentException("Patient introuvable avec l'ID: " + patientId);
+        }
+        patientsById.put(patientId, updates);
+        logAudit(actorId, actorUsername, actorRole, actorTenantId,
+                "PATIENT_UPDATED", "Patient", patientId.toString(), "SUCCESS",
+                "Mise à jour du dossier patient pour: " + updates.fullName() + " (" + updates.nationalId() + ")" +
+                (updates.bmi() != null ? " [IMC: " + updates.bmi() + " - " + updates.bmiCategory() + "]" : ""));
+        return updates;
     }
 
     // ==========================================
@@ -103,9 +117,25 @@ public class ClinicalService {
         Patient patient = patientsById.get(vitals.patientId());
         VitalSigns enriched = (patient != null) ? vitals.withPatientContext(patient) : vitals;
         vitalsByPatientId.computeIfAbsent(enriched.patientId(), k -> new CopyOnWriteArrayList<>()).add(0, enriched);
+
+        if (patient != null) {
+            Patient updatedPatient = patient.mergeUpdates(
+                    null, null, null, null, null,
+                    enriched.bloodGroup(),
+                    null,
+                    enriched.emergencyContact(),
+                    enriched.allergies(),
+                    enriched.chronicConditions(),
+                    enriched.weightKg(),
+                    enriched.heightCm(),
+                    enriched.customFields()
+            );
+            patientsById.put(patient.id(), updatedPatient);
+        }
+
         logAudit(actorId, actorUsername, actorRole, actorTenantId,
                 "VITALS_RECORDED", "VitalSigns", enriched.id().toString(), "SUCCESS",
-                "Constantes enregistrées pour patient " + enriched.patientId() + " (Tension: " + enriched.systolicBp() + "/" + enriched.diastolicBp() + " mmHg, Pouls: " + enriched.heartRate() + " bpm, SpO2: " + enriched.oxygenSaturation() + "%, Groupe: " + enriched.bloodGroup() + ")");
+                "Constantes enregistrées pour patient " + enriched.patientId() + " (Tension: " + enriched.systolicBp() + "/" + enriched.diastolicBp() + " mmHg, Pouls: " + enriched.heartRate() + " bpm, SpO2: " + enriched.oxygenSaturation() + "%, Groupe: " + enriched.bloodGroup() + (enriched.bmi() != null ? ", IMC: " + enriched.bmi() : "") + ")");
         return enriched;
     }
 
@@ -142,11 +172,62 @@ public class ClinicalService {
     // ==========================================
 
     public Consultation recordConsultation(Consultation consultation, UUID actorId, String actorUsername, String actorRole, UUID actorTenantId) {
-        consultationsByPatientId.computeIfAbsent(consultation.patientId(), k -> new CopyOnWriteArrayList<>()).add(0, consultation);
+        Patient patient = patientsById.get(consultation.patientId());
+        Consultation toRecord = consultation;
+
+        if (patient != null) {
+            Double w = consultation.weightKg() != null ? consultation.weightKg() : patient.weightKg();
+            Double h = consultation.heightCm() != null ? consultation.heightCm() : patient.heightCm();
+            Double bmi = consultation.bmi();
+            String bmiCat = consultation.bmiCategory();
+            if (bmi == null && w != null && h != null && h > 0 && w > 0) {
+                bmi = Patient.calculateBmi(w, h);
+                bmiCat = Patient.classifyBmi(bmi);
+            }
+
+            if (toRecord.bmi() == null && bmi != null) {
+                toRecord = new Consultation(
+                        consultation.id(),
+                        consultation.patientId(),
+                        consultation.doctorId(),
+                        consultation.doctorName(),
+                        consultation.tenantId(),
+                        consultation.date(),
+                        consultation.chiefComplaint(),
+                        consultation.examinationNotes(),
+                        consultation.diagnosis(),
+                        consultation.treatmentPlan(),
+                        w,
+                        h,
+                        bmi,
+                        bmiCat,
+                        consultation.systolicBp(),
+                        consultation.diastolicBp(),
+                        consultation.heartRate(),
+                        consultation.temperature(),
+                        consultation.oxygenSaturation(),
+                        consultation.customFields()
+                );
+            }
+
+            if (consultation.weightKg() != null || consultation.heightCm() != null || (consultation.customFields() != null && !consultation.customFields().isEmpty())) {
+                Patient updatedPatient = patient.mergeUpdates(
+                        null, null, null, null, null, null, null, null,
+                        null, null,
+                        consultation.weightKg(),
+                        consultation.heightCm(),
+                        consultation.customFields()
+                );
+                patientsById.put(patient.id(), updatedPatient);
+            }
+        }
+
+        consultationsByPatientId.computeIfAbsent(toRecord.patientId(), k -> new CopyOnWriteArrayList<>()).add(0, toRecord);
         logAudit(actorId, actorUsername, actorRole, actorTenantId,
-                "CONSULTATION_CREATED", "Consultation", consultation.id().toString(), "SUCCESS",
-                "Consultation enregistrée par " + consultation.doctorName() + " : " + consultation.diagnosis());
-        return consultation;
+                "CONSULTATION_CREATED", "Consultation", toRecord.id().toString(), "SUCCESS",
+                "Consultation enregistrée par " + toRecord.doctorName() + " : " + toRecord.diagnosis() +
+                (toRecord.bmi() != null ? " (IMC: " + toRecord.bmi() + " - " + toRecord.bmiCategory() + ")" : ""));
+        return toRecord;
     }
 
     public List<Consultation> getConsultations(UUID patientId) {

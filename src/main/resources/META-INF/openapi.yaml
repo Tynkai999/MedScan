@@ -168,6 +168,78 @@ paths:
           description: Patient dossier including vitals, consultations and prescriptions
         '403':
           description: Access denied by tenant isolation
+    put:
+      summary: Update patient demographics, biometrics, and dynamic custom fields
+      description: Allows doctors and nurses to update identity, age, weight, height, blood group, allergies, and patient-specific dynamic custom fields. Automatically recalculates BMI and clinical category.
+      operationId: updatePatientRecord
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                birthDate:
+                  type: string
+                  format: date
+                age:
+                  type: integer
+                gender:
+                  type: string
+                bloodGroup:
+                  type: string
+                phone:
+                  type: string
+                emergencyContact:
+                  type: string
+                allergies:
+                  type: array
+                  items:
+                    type: string
+                chronicConditions:
+                  type: array
+                  items:
+                    type: string
+                weightKg:
+                  type: number
+                  example: 72.5
+                heightCm:
+                  type: number
+                  example: 175.0
+                customFields:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  example:
+                    perimetreAbdominal: "88 cm"
+                    tabagisme: "0 paquet/jour"
+                    profession: "Enseignant"
+      responses:
+        '200':
+          description: Patient updated successfully with recalculated BMI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '400':
+          description: Invalid request payload or patient ID
+        '403':
+          description: Forbidden - role or tenant isolation violation
+        '404':
+          description: Patient not found
 
   /v1/patients/{id}/vitals:
     get:
@@ -198,13 +270,69 @@ paths:
 
   /v1/patients/{id}/consultations:
     post:
-      summary: Record clinical consultation notes
+      summary: Record clinical consultation notes with biometrics and dynamic custom fields
+      description: Record a consultation note. Accepts weight, height, blood pressure, heart rate, temperature, SpO2, and custom fields. Automatically calculates BMI and clinical category and synchronizes patient master dossier.
       operationId: recordConsultation
       security:
         - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chiefComplaint, diagnosis]
+              properties:
+                chiefComplaint:
+                  type: string
+                examinationNotes:
+                  type: string
+                diagnosis:
+                  type: string
+                treatmentPlan:
+                  type: string
+                weightKg:
+                  type: number
+                  example: 74.0
+                heightCm:
+                  type: number
+                  example: 175.0
+                systolicBp:
+                  type: integer
+                  example: 120
+                diastolicBp:
+                  type: integer
+                  example: 80
+                heartRate:
+                  type: integer
+                  example: 72
+                temperature:
+                  type: number
+                  example: 37.0
+                oxygenSaturation:
+                  type: number
+                  example: 98.5
+                customFields:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  example:
+                    perimetreAbdominal: "86 cm"
+                    regimeDietetique: "Hyposodé"
       responses:
         '201':
-          description: Consultation notes recorded
+          description: Consultation notes recorded with automatically calculated BMI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consultation'
 
   /v1/patients/{id}/prescriptions:
     post:
@@ -385,6 +513,117 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    Patient:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nationalId:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        fullName:
+          type: string
+        birthDate:
+          type: string
+          format: date
+        age:
+          type: integer
+        gender:
+          type: string
+        bloodGroup:
+          type: string
+        phone:
+          type: string
+        emergencyContact:
+          type: string
+        allergies:
+          type: array
+          items:
+            type: string
+        chronicConditions:
+          type: array
+          items:
+            type: string
+        weightKg:
+          type: number
+        heightCm:
+          type: number
+        bmi:
+          type: number
+          description: Automatically calculated Body Mass Index
+        bmiCategory:
+          type: string
+          description: Clinical classification (Corpulence normale, Surpoids, etc.)
+        customFields:
+          type: object
+          additionalProperties:
+            type: string
+        tenantId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Consultation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        doctorId:
+          type: string
+          format: uuid
+        doctorName:
+          type: string
+        tenantId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date-time
+        chiefComplaint:
+          type: string
+        examinationNotes:
+          type: string
+        diagnosis:
+          type: string
+        treatmentPlan:
+          type: string
+        weightKg:
+          type: number
+        heightCm:
+          type: number
+        bmi:
+          type: number
+          description: Automatically calculated Body Mass Index
+        bmiCategory:
+          type: string
+        systolicBp:
+          type: integer
+        diastolicBp:
+          type: integer
+        heartRate:
+          type: integer
+        temperature:
+          type: number
+        oxygenSaturation:
+          type: number
+        customFields:
+          type: object
+          additionalProperties:
+            type: string
+
     VitalSigns:
       type: object
       properties:

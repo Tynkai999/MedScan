@@ -1,13 +1,16 @@
 package com.medscan.clinical;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Constantes vitales enrichies du patient (MOD-03).
  * Intègre les paramètres physiologiques, les alertes de triage,
- * ainsi que le contexte clinique d'urgence (groupe sanguin, allergies, comorbidités, contact d'urgence).
+ * le contexte clinique d'urgence (groupe sanguin, allergies, comorbidités, contact d'urgence),
+ * ainsi que le calcul automatique de l'IMC avec classification et champs dynamiques (customFields).
  */
 public record VitalSigns(
         UUID id,
@@ -20,6 +23,7 @@ public record VitalSigns(
         Double weightKg,
         Double heightCm,
         Double bmi,
+        String bmiCategory,
         Double bloodGlucose,
         Double oxygenSaturation,   // SpO2 en % (ex: 98.0)
         Integer respiratoryRate,   // Fréquence respiratoire / min (ex: 16)
@@ -30,6 +34,7 @@ public record VitalSigns(
         String emergencyContact,   // Personne à contacter d'urgence
         String triageLevel,        // "NORMAL", "ATTENTION", "CRITICAL"
         String notes,              // Observations cliniques complémentaires
+        Map<String, String> customFields, // Attributs cliniques personnalisés selon le patient
         String recordedBy,
         String recordedByRole
 ) {
@@ -40,16 +45,76 @@ public record VitalSigns(
         if (chronicConditions == null) {
             chronicConditions = List.of();
         }
+        if (customFields == null) {
+            customFields = Collections.emptyMap();
+        }
         if (bloodGroup == null || bloodGroup.isBlank()) {
             bloodGroup = "Inconnu";
         }
-        if (bmi == null && weightKg != null && heightCm != null && heightCm > 0) {
-            double heightM = heightCm / 100.0;
-            bmi = Math.round((weightKg / (heightM * heightM)) * 10.0) / 10.0;
+        if (bmi == null && weightKg != null && heightCm != null && heightCm > 0 && weightKg > 0) {
+            bmi = Patient.calculateBmi(weightKg, heightCm);
+        }
+        if (bmiCategory == null && bmi != null) {
+            bmiCategory = Patient.classifyBmi(bmi);
         }
         if (triageLevel == null || triageLevel.isBlank()) {
             triageLevel = computeTriageLevel(oxygenSaturation, systolicBp, diastolicBp, heartRate, temperature);
         }
+    }
+
+    /**
+     * Constructeur historique 22 paramètres
+     */
+    public VitalSigns(
+            UUID id,
+            UUID patientId,
+            Instant recordedAt,
+            Integer systolicBp,
+            Integer diastolicBp,
+            Integer heartRate,
+            Double temperature,
+            Double weightKg,
+            Double heightCm,
+            Double bmi,
+            Double bloodGlucose,
+            Double oxygenSaturation,
+            Integer respiratoryRate,
+            Integer painScale,
+            String bloodGroup,
+            List<String> allergies,
+            List<String> chronicConditions,
+            String emergencyContact,
+            String triageLevel,
+            String notes,
+            String recordedBy,
+            String recordedByRole
+    ) {
+        this(
+                id,
+                patientId,
+                recordedAt,
+                systolicBp,
+                diastolicBp,
+                heartRate,
+                temperature,
+                weightKg,
+                heightCm,
+                bmi,
+                null,
+                bloodGlucose,
+                oxygenSaturation,
+                respiratoryRate,
+                painScale,
+                bloodGroup,
+                allergies,
+                chronicConditions,
+                emergencyContact,
+                triageLevel,
+                notes,
+                Collections.emptyMap(),
+                recordedBy,
+                recordedByRole
+        );
     }
 
     /**
@@ -79,6 +144,7 @@ public record VitalSigns(
                 weightKg,
                 168.0,
                 null,
+                null,
                 bloodGlucose,
                 98.0,
                 16,
@@ -89,6 +155,7 @@ public record VitalSigns(
                 null,
                 null,
                 null,
+                Collections.emptyMap(),
                 recordedBy,
                 recordedByRole
         );
@@ -126,6 +193,13 @@ public record VitalSigns(
                 ? patient.chronicConditions() : this.chronicConditions;
         String em = (this.emergencyContact == null || this.emergencyContact.isBlank())
                 ? patient.emergencyContact() : this.emergencyContact;
+        Double ht = (this.heightCm == null && patient.heightCm() != null)
+                ? patient.heightCm() : this.heightCm;
+
+        Map<String, String> mergedCustom = new java.util.LinkedHashMap<>(patient.customFields());
+        if (this.customFields != null && !this.customFields.isEmpty()) {
+            mergedCustom.putAll(this.customFields);
+        }
 
         return new VitalSigns(
                 this.id,
@@ -136,8 +210,9 @@ public record VitalSigns(
                 this.heartRate,
                 this.temperature,
                 this.weightKg,
-                this.heightCm,
+                ht,
                 this.bmi,
+                this.bmiCategory,
                 this.bloodGlucose,
                 this.oxygenSaturation,
                 this.respiratoryRate,
@@ -148,6 +223,7 @@ public record VitalSigns(
                 em,
                 this.triageLevel,
                 this.notes,
+                mergedCustom,
                 this.recordedBy,
                 this.recordedByRole
         );

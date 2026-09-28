@@ -3,6 +3,7 @@ package com.medscan.clinical;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -26,6 +27,7 @@ public final class ClinicalJsonMapper {
         sb.append("\"lastName\":\"").append(JsonHelper.escape(p.lastName())).append("\",");
         sb.append("\"fullName\":\"").append(JsonHelper.escape(p.fullName())).append("\",");
         sb.append("\"birthDate\":\"").append(JsonHelper.escape(p.birthDate())).append("\",");
+        sb.append("\"age\":").append(p.age()).append(",");
         sb.append("\"gender\":\"").append(JsonHelper.escape(p.gender())).append("\",");
         sb.append("\"bloodGroup\":\"").append(JsonHelper.escape(p.bloodGroup())).append("\",");
         sb.append("\"phone\":\"").append(JsonHelper.escape(p.phone())).append("\",");
@@ -36,8 +38,14 @@ public final class ClinicalJsonMapper {
         sb.append("\"chronicConditions\":[")
                 .append(p.chronicConditions().stream().map(c -> "\"" + JsonHelper.escape(c) + "\"").collect(Collectors.joining(",")))
                 .append("],");
+        sb.append("\"weightKg\":").append(p.weightKg()).append(",");
+        sb.append("\"heightCm\":").append(p.heightCm()).append(",");
+        sb.append("\"bmi\":").append(p.bmi()).append(",");
+        sb.append("\"bmiCategory\":\"").append(JsonHelper.escape(p.bmiCategory())).append("\",");
+        sb.append("\"customFields\":").append(mapStringStringToJson(p.customFields())).append(",");
         sb.append("\"tenantId\":\"").append(p.tenantId()).append("\",");
-        sb.append("\"createdAt\":\"").append(p.createdAt()).append("\"");
+        sb.append("\"createdAt\":\"").append(p.createdAt()).append("\",");
+        sb.append("\"updatedAt\":\"").append(p.updatedAt()).append("\"");
         sb.append("}");
         return sb.toString();
     }
@@ -60,6 +68,7 @@ public final class ClinicalJsonMapper {
         sb.append("\"weightKg\":").append(v.weightKg()).append(",");
         sb.append("\"heightCm\":").append(v.heightCm()).append(",");
         sb.append("\"bmi\":").append(v.bmi()).append(",");
+        sb.append("\"bmiCategory\":\"").append(JsonHelper.escape(v.bmiCategory())).append("\",");
         sb.append("\"bloodGlucose\":").append(v.bloodGlucose()).append(",");
         sb.append("\"oxygenSaturation\":").append(v.oxygenSaturation()).append(",");
         sb.append("\"respiratoryRate\":").append(v.respiratoryRate()).append(",");
@@ -74,6 +83,7 @@ public final class ClinicalJsonMapper {
         sb.append("\"emergencyContact\":\"").append(JsonHelper.escape(v.emergencyContact() != null ? v.emergencyContact() : "")).append("\",");
         sb.append("\"triageLevel\":\"").append(JsonHelper.escape(v.triageLevel())).append("\",");
         sb.append("\"notes\":\"").append(JsonHelper.escape(v.notes() != null ? v.notes() : "")).append("\",");
+        sb.append("\"customFields\":").append(mapStringStringToJson(v.customFields())).append(",");
         sb.append("\"recordedBy\":\"").append(JsonHelper.escape(v.recordedBy())).append("\",");
         sb.append("\"recordedByRole\":\"").append(JsonHelper.escape(v.recordedByRole())).append("\"");
         sb.append("}");
@@ -97,13 +107,42 @@ public final class ClinicalJsonMapper {
         sb.append("\"chiefComplaint\":\"").append(JsonHelper.escape(c.chiefComplaint())).append("\",");
         sb.append("\"examinationNotes\":\"").append(JsonHelper.escape(c.examinationNotes())).append("\",");
         sb.append("\"diagnosis\":\"").append(JsonHelper.escape(c.diagnosis())).append("\",");
-        sb.append("\"treatmentPlan\":\"").append(JsonHelper.escape(c.treatmentPlan())).append("\"");
+        sb.append("\"treatmentPlan\":\"").append(JsonHelper.escape(c.treatmentPlan())).append("\",");
+        sb.append("\"weightKg\":").append(c.weightKg()).append(",");
+        sb.append("\"heightCm\":").append(c.heightCm()).append(",");
+        sb.append("\"bmi\":").append(c.bmi()).append(",");
+        sb.append("\"bmiCategory\":\"").append(JsonHelper.escape(c.bmiCategory())).append("\",");
+        sb.append("\"systolicBp\":").append(c.systolicBp()).append(",");
+        sb.append("\"diastolicBp\":").append(c.diastolicBp()).append(",");
+        sb.append("\"heartRate\":").append(c.heartRate()).append(",");
+        sb.append("\"temperature\":").append(c.temperature()).append(",");
+        sb.append("\"oxygenSaturation\":").append(c.oxygenSaturation()).append(",");
+        sb.append("\"customFields\":").append(mapStringStringToJson(c.customFields()));
         sb.append("}");
         return sb.toString();
     }
 
     public static String toConsultationListJson(List<Consultation> list) {
         return "[" + list.stream().map(ClinicalJsonMapper::toJson).collect(Collectors.joining(",")) + "]";
+    }
+
+    public static String mapStringStringToJson(Map<String, String> map) {
+        if (map == null || map.isEmpty()) {
+            return "{}";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        boolean first = true;
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            if (!first) {
+                sb.append(",");
+            }
+            sb.append("\"").append(JsonHelper.escape(entry.getKey())).append("\":\"")
+              .append(JsonHelper.escape(entry.getValue())).append("\"");
+            first = false;
+        }
+        sb.append("}");
+        return sb.toString();
     }
 
     public static String toJson(PrescriptionItem item) {
@@ -199,6 +238,10 @@ public final class ClinicalJsonMapper {
 
         List<String> allergies = JsonHelper.getStringList(body, "allergies");
         List<String> chronicConditions = JsonHelper.getStringList(body, "chronicConditions");
+        Integer age = JsonHelper.getInt(body, "age");
+        Double weightKg = JsonHelper.getDouble(body, "weightKg");
+        Double heightCm = JsonHelper.getDouble(body, "heightCm");
+        Map<String, String> customFields = JsonHelper.getStringMap(body, "customFields");
 
         return new Patient(
                 UUID.randomUUID(),
@@ -206,15 +249,55 @@ public final class ClinicalJsonMapper {
                 firstName != null ? firstName : "Prénom",
                 lastName != null ? lastName : "Nom",
                 birthDate != null ? birthDate : "1990-01-01",
+                age,
                 gender != null ? gender : "U",
                 bloodGroup != null ? bloodGroup : "Inconnu",
                 phone != null ? phone : "",
                 emergencyContact != null ? emergencyContact : "",
                 allergies,
                 chronicConditions,
+                weightKg,
+                heightCm,
+                null,
+                null,
+                customFields,
                 tenantId,
                 null,
+                Instant.now(),
                 Instant.now()
+        );
+    }
+
+    public static Patient parsePatientUpdate(String body, Patient existing) {
+        String firstName = JsonHelper.getString(body, "firstName");
+        String lastName = JsonHelper.getString(body, "lastName");
+        String birthDate = JsonHelper.getString(body, "birthDate");
+        Integer age = JsonHelper.getInt(body, "age");
+        String gender = JsonHelper.getString(body, "gender");
+        String bloodGroup = JsonHelper.getString(body, "bloodGroup");
+        String phone = JsonHelper.getString(body, "phone");
+        String emergencyContact = JsonHelper.getString(body, "emergencyContact");
+
+        List<String> allergies = JsonHelper.getStringList(body, "allergies");
+        List<String> chronicConditions = JsonHelper.getStringList(body, "chronicConditions");
+        Double weightKg = JsonHelper.getDouble(body, "weightKg");
+        Double heightCm = JsonHelper.getDouble(body, "heightCm");
+        Map<String, String> customFields = JsonHelper.getStringMap(body, "customFields");
+
+        return existing.mergeUpdates(
+                firstName,
+                lastName,
+                birthDate,
+                age,
+                gender,
+                bloodGroup,
+                phone,
+                emergencyContact,
+                allergies,
+                chronicConditions,
+                weightKg,
+                heightCm,
+                customFields
         );
     }
 
@@ -238,6 +321,7 @@ public final class ClinicalJsonMapper {
         String emergencyContact = JsonHelper.getString(body, "emergencyContact");
         String triageLevel = JsonHelper.getString(body, "triageLevel");
         String notes = JsonHelper.getString(body, "notes");
+        Map<String, String> customFields = JsonHelper.getStringMap(body, "customFields");
 
         return new VitalSigns(
                 UUID.randomUUID(),
@@ -250,6 +334,7 @@ public final class ClinicalJsonMapper {
                 weight != null ? weight : 65.0,
                 height != null ? height : 170.0,
                 null,
+                null,
                 glucose != null ? glucose : 1.0,
                 spo2 != null ? spo2 : 98.0,
                 respRate != null ? respRate : 16,
@@ -260,6 +345,7 @@ public final class ClinicalJsonMapper {
                 emergencyContact,
                 triageLevel,
                 notes,
+                customFields,
                 recordedBy,
                 role
         );
@@ -270,6 +356,17 @@ public final class ClinicalJsonMapper {
         String examinationNotes = JsonHelper.getString(body, "examinationNotes");
         String diagnosis = JsonHelper.getString(body, "diagnosis");
         String treatmentPlan = JsonHelper.getString(body, "treatmentPlan");
+        Double weightKg = JsonHelper.getDouble(body, "weightKg");
+        Double heightCm = JsonHelper.getDouble(body, "heightCm");
+        Integer sys = JsonHelper.getInt(body, "systolicBp");
+        Integer dia = JsonHelper.getInt(body, "diastolicBp");
+        Integer hr = JsonHelper.getInt(body, "heartRate");
+        Double temp = JsonHelper.getDouble(body, "temperature");
+        Double spo2 = JsonHelper.getDouble(body, "oxygenSaturation");
+        if (spo2 == null) {
+            spo2 = JsonHelper.getDouble(body, "spo2");
+        }
+        Map<String, String> customFields = JsonHelper.getStringMap(body, "customFields");
 
         return new Consultation(
                 UUID.randomUUID(),
@@ -281,7 +378,17 @@ public final class ClinicalJsonMapper {
                 chiefComplaint != null ? chiefComplaint : "Consultation générale",
                 examinationNotes != null ? examinationNotes : "",
                 diagnosis != null ? diagnosis : "En cours d'investigation",
-                treatmentPlan != null ? treatmentPlan : ""
+                treatmentPlan != null ? treatmentPlan : "",
+                weightKg,
+                heightCm,
+                null,
+                null,
+                sys,
+                dia,
+                hr,
+                temp,
+                spo2,
+                customFields
         );
     }
 

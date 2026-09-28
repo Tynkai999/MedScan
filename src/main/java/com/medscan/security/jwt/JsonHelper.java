@@ -208,4 +208,89 @@ public final class JsonHelper {
     public static List<String> getStringList(String json, String arrayKey) {
         return new ArrayList<>(getStringArray(json, arrayKey));
     }
+
+    /**
+     * Extrait un objet JSON clé-valeur en tant que Map<String, String>.
+     * Utile pour les champs personnalisés dynamiques (customFields).
+     */
+    public static Map<String, String> getStringMap(String json, String objectKey) {
+        if (json == null || objectKey == null) {
+            return Collections.emptyMap();
+        }
+        String pattern = "\"" + objectKey + "\"";
+        int keyIndex = json.indexOf(pattern);
+        if (keyIndex == -1) {
+            return Collections.emptyMap();
+        }
+
+        int colonIndex = json.indexOf(':', keyIndex + pattern.length());
+        if (colonIndex == -1) {
+            return Collections.emptyMap();
+        }
+
+        int openBrace = json.indexOf('{', colonIndex);
+        if (openBrace == -1) {
+            return Collections.emptyMap();
+        }
+
+        int depth = 0;
+        int closeBrace = -1;
+        boolean inQuotes = false;
+        for (int i = openBrace; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '"' && (i == 0 || json.charAt(i - 1) != '\\')) {
+                inQuotes = !inQuotes;
+            } else if (!inQuotes) {
+                if (c == '{') depth++;
+                else if (c == '}') {
+                    depth--;
+                    if (depth == 0) {
+                        closeBrace = i;
+                        break;
+                    }
+                }
+            }
+        }
+        if (closeBrace == -1) {
+            return Collections.emptyMap();
+        }
+
+        String content = json.substring(openBrace + 1, closeBrace);
+        Map<String, String> result = new java.util.LinkedHashMap<>();
+
+        int idx = 0;
+        while (idx < content.length()) {
+            int kStart = content.indexOf('"', idx);
+            if (kStart == -1) break;
+            int kEnd = content.indexOf('"', kStart + 1);
+            if (kEnd == -1) break;
+            String k = content.substring(kStart + 1, kEnd);
+
+            int col = content.indexOf(':', kEnd + 1);
+            if (col == -1) break;
+
+            int valStart = col + 1;
+            while (valStart < content.length() && Character.isWhitespace(content.charAt(valStart))) {
+                valStart++;
+            }
+            if (valStart >= content.length()) break;
+
+            String v;
+            if (content.charAt(valStart) == '"') {
+                int vEnd = content.indexOf('"', valStart + 1);
+                if (vEnd == -1) break;
+                v = content.substring(valStart + 1, vEnd);
+                idx = vEnd + 1;
+            } else {
+                int comma = content.indexOf(',', valStart);
+                if (comma == -1) {
+                    comma = content.length();
+                }
+                v = content.substring(valStart, comma).trim();
+                idx = comma + 1;
+            }
+            result.put(k, v);
+        }
+        return result;
+    }
 }

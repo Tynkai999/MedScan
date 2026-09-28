@@ -1136,6 +1136,38 @@
           }
         },
         {
+          "name": "03b. Mettre à Jour Patient & Biométrie & Champs Personnalisés (Médecin / Infirmier)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weightKg\": 64.0,\n  \"heightCm\": 168.0,\n  \"bloodGroup\": \"A+\",\n  \"customFields\": {\n    \"perimetreAbdominal\": \"76 cm\",\n    \"tabagisme\": \"0 paquet/jour\",\n    \"profession\": \"Enseignante\",\n    \"statutGrossesse\": \"Non enceinte\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/patients/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"
+              ]
+            },
+            "description": "Mise à jour des informations, biométrie et champs personnalisés. Calcule automatiquement l'IMC et la classification."
+          }
+        },
+        {
           "name": "04. Enregistrer Constantes Vitales (Infirmier)",
           "request": {
             "method": "POST",
@@ -1208,7 +1240,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"chiefComplaint\": \"C\\u00e9phal\\u00e9es et fatigue persistante\",\n  \"examinationNotes\": \"Examen neurologique normal. Tension art\\u00e9rielle contr\\u00f4l\\u00e9e.\",\n  \"diagnosis\": \"C\\u00e9phal\\u00e9e de tension par surmenage\",\n  \"treatmentPlan\": \"Repos pr\\u00e9conis\\u00e9, parac\\u00e9tamol en cas de crise.\"\n}"
+              "raw": "{\n  \"chiefComplaint\": \"Suivi m\\u00e9tabolique et contr\\u00f4le tensionnel\",\n  \"examinationNotes\": \"Examen cardio-vasculaire sans particularit\\u00e9. PA 122/80 mmHg.\",\n  \"diagnosis\": \"Profil anthropom\\u00e9trique optimal et tension \\u00e9quilibr\\u00e9e\",\n  \"treatmentPlan\": \"Poursuivre r\\u00e8gles hygi\\u00e9no-di\\u00e9t\\u00e9tiques actuelles.\",\n  \"weightKg\": 72.0,\n  \"heightCm\": 170.0,\n  \"systolicBp\": 122,\n  \"diastolicBp\": 80,\n  \"heartRate\": 68,\n  \"temperature\": 36.9,\n  \"oxygenSaturation\": 99.0,\n  \"customFields\": {\n    \"perimetreAbdominal\": \"82 cm\",\n    \"regimeAlimentaire\": \"Hypo-sod\\u00e9\",\n    \"activitePhysique\": \"30 min de marche par jour\",\n    \"observanceTherapeutique\": \"Excellente\"\n  }\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/patients/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e/consultations",
