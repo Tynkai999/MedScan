@@ -112,6 +112,22 @@ class ClinicalServiceTest {
         List<VitalSigns> vitalsList = service.getVitalSigns(patientFatouId);
         assertEquals(2, vitalsList.size());
         assertEquals(135, vitalsList.get(0).systolicBp());
+        assertEquals("A+", vitalsList.get(0).bloodGroup());
+        assertTrue(vitalsList.get(0).allergies().contains("Pénicilline"));
+        assertEquals("Asthme léger", vitalsList.get(0).chronicConditions().get(0));
+        assertEquals("ATTENTION", vitalsList.get(0).triageLevel()); // Température 38.2°C déclenche ATTENTION
+
+        // Baseline Fatou
+        VitalSigns baseline = vitalsList.get(1);
+        assertEquals(98.5, baseline.oxygenSaturation());
+        assertEquals(22.1, baseline.bmi());
+        assertEquals("NORMAL", baseline.triageLevel());
+        assertEquals("Moussa Ouedraogo (+226 76 11 22 33)", baseline.emergencyContact());
+
+        String json = ClinicalJsonMapper.toJson(vitalsList.get(0));
+        assertTrue(json.contains("\"bloodGroup\":\"A+\""));
+        assertTrue(json.contains("\"Pénicilline\""));
+        assertTrue(json.contains("\"triageLevel\":\"ATTENTION\""));
 
         Consultation c = new Consultation(
                 UUID.randomUUID(),

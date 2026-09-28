@@ -170,6 +170,23 @@ paths:
           description: Access denied by tenant isolation
 
   /v1/patients/{id}/vitals:
+    get:
+      summary: Retrieve enriched vital signs history and emergency clinical markers
+      operationId: getPatientVitals
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of vital signs with blood group, allergies, SpO2, BMI and triage
+        '403':
+          description: Forbidden
     post:
       summary: Record vital signs for a patient
       operationId: recordVitals
@@ -338,9 +355,151 @@ paths:
         '200':
           description: Report officially validated
 
+  /v1/dashboard/stats:
+    get:
+      summary: Get consolidated actor-specific dashboard metrics, critical alerts, recent activities and trends
+      operationId: getDashboardStats
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          required: false
+          description: Target actor role override (DOCTOR, PHARMACIST, RADIOLOGIST, NURSE, DELIVERY_AGENT, TENANT_ADMIN, PATIENT, AUDITOR)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Consolidated dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActorDashboardStats'
+        '401':
+          description: Unauthorized
+
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  schemas:
+    VitalSigns:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        recordedAt:
+          type: string
+          format: date-time
+        systolicBp:
+          type: integer
+        diastolicBp:
+          type: integer
+        heartRate:
+          type: integer
+        temperature:
+          type: number
+        weightKg:
+          type: number
+        heightCm:
+          type: number
+        bmi:
+          type: number
+        bloodGlucose:
+          type: number
+        oxygenSaturation:
+          type: number
+          description: SpO2 in percent
+        respiratoryRate:
+          type: integer
+        painScale:
+          type: integer
+        bloodGroup:
+          type: string
+          example: A+
+        allergies:
+          type: array
+          items:
+            type: string
+          example: ["Pénicilline", "Arachide"]
+        chronicConditions:
+          type: array
+          items:
+            type: string
+          example: ["Asthme léger"]
+        emergencyContact:
+          type: string
+          example: Moussa Ouedraogo (+226 76 11 22 33)
+        triageLevel:
+          type: string
+          enum: [NORMAL, ATTENTION, CRITICAL]
+        notes:
+          type: string
+        recordedBy:
+          type: string
+        recordedByRole:
+          type: string
+
+    ActorDashboardStats:
+      type: object
+      properties:
+        role:
+          type: string
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        tenantId:
+          type: string
+          format: uuid
+        tenantName:
+          type: string
+        kpis:
+          type: object
+        criticalAlerts:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              patientId:
+                type: string
+              patientName:
+                type: string
+              alertType:
+                type: string
+              severity:
+                type: string
+              summary:
+                type: string
+              recordedAt:
+                type: string
+        recentActivities:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              timestamp:
+                type: string
+              activityType:
+                type: string
+              title:
+                type: string
+              description:
+                type: string
+              actorName:
+                type: string
+              status:
+                type: string
+        chartsData:
+          type: object

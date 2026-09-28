@@ -100,15 +100,41 @@ public class ClinicalService {
     // ==========================================
 
     public VitalSigns recordVitals(VitalSigns vitals, UUID actorId, String actorUsername, String actorRole, UUID actorTenantId) {
-        vitalsByPatientId.computeIfAbsent(vitals.patientId(), k -> new CopyOnWriteArrayList<>()).add(0, vitals);
+        Patient patient = patientsById.get(vitals.patientId());
+        VitalSigns enriched = (patient != null) ? vitals.withPatientContext(patient) : vitals;
+        vitalsByPatientId.computeIfAbsent(enriched.patientId(), k -> new CopyOnWriteArrayList<>()).add(0, enriched);
         logAudit(actorId, actorUsername, actorRole, actorTenantId,
-                "VITALS_RECORDED", "VitalSigns", vitals.id().toString(), "SUCCESS",
-                "Constantes enregistrées pour patient " + vitals.patientId() + " (Tension: " + vitals.systolicBp() + "/" + vitals.diastolicBp() + " mmHg, Pouls: " + vitals.heartRate() + " bpm)");
-        return vitals;
+                "VITALS_RECORDED", "VitalSigns", enriched.id().toString(), "SUCCESS",
+                "Constantes enregistrées pour patient " + enriched.patientId() + " (Tension: " + enriched.systolicBp() + "/" + enriched.diastolicBp() + " mmHg, Pouls: " + enriched.heartRate() + " bpm, SpO2: " + enriched.oxygenSaturation() + "%, Groupe: " + enriched.bloodGroup() + ")");
+        return enriched;
     }
 
     public List<VitalSigns> getVitalSigns(UUID patientId) {
         return vitalsByPatientId.getOrDefault(patientId, Collections.emptyList());
+    }
+
+    public Map<UUID, Patient> getAllPatientsMap() {
+        return Collections.unmodifiableMap(patientsById);
+    }
+
+    public Map<UUID, List<VitalSigns>> getAllVitalsMap() {
+        return Collections.unmodifiableMap(vitalsByPatientId);
+    }
+
+    public Map<UUID, List<Consultation>> getAllConsultationsMap() {
+        return Collections.unmodifiableMap(consultationsByPatientId);
+    }
+
+    public Map<UUID, List<Prescription>> getAllPrescriptionsMap() {
+        return Collections.unmodifiableMap(prescriptionsByPatientId);
+    }
+
+    public Map<String, Prescription> getAllPrescriptionsByCodeMap() {
+        return Collections.unmodifiableMap(prescriptionsByCode);
+    }
+
+    public List<BreakGlassRecord> getAllBreakGlassRecords() {
+        return Collections.unmodifiableList(breakGlassRecords);
     }
 
     // ==========================================
@@ -267,10 +293,16 @@ public class ClinicalService {
         );
         patientsById.put(p1Id, p1);
 
-        // Constantes Fatou
+        // Constantes Fatou (enrichies)
         VitalSigns v1 = new VitalSigns(
                 UUID.randomUUID(), p1Id, Instant.now().minusSeconds(86400 * 2),
-                120, 80, 72, 36.8, 62.5, 0.95,
+                120, 80, 72, 36.8, 62.5, 168.0, 22.1, 0.95,
+                98.5, 16, 0, "A+",
+                List.of("Pénicilline", "Arachide"),
+                List.of("Asthme léger"),
+                "Moussa Ouedraogo (+226 76 11 22 33)",
+                "NORMAL",
+                "Constantes stables en consultation de routine.",
                 "Inf. Awa Kaboré", "NURSE"
         );
         vitalsByPatientId.computeIfAbsent(p1Id, k -> new CopyOnWriteArrayList<>()).add(v1);
@@ -326,6 +358,20 @@ public class ClinicalService {
                 Instant.now().minusSeconds(86400 * 60)
         );
         patientsById.put(p2Id, p2);
+
+        // Constantes Ibrahim (Surveillance HTA et Diabète)
+        VitalSigns v2 = new VitalSigns(
+                UUID.randomUUID(), p2Id, Instant.now().minusSeconds(86400 * 5),
+                148, 94, 84, 37.1, 84.0, 178.0, 26.5, 1.45,
+                96.0, 18, 1, "O+",
+                List.of("Sulfamides"),
+                List.of("Diabète de Type 2", "Hypertension Artérielle"),
+                "Salamata Compaore (+226 70 99 88 77)",
+                "ATTENTION",
+                "Tension artérielle élevée et glycémie à jeun limite. Réajuster antihypertenseur.",
+                "Dr. Seydou Traore", "DOCTOR"
+        );
+        vitalsByPatientId.computeIfAbsent(p2Id, k -> new CopyOnWriteArrayList<>()).add(v2);
 
         // Audit de démarrage
         logAudit(UUID.fromString("f70a1335-b31f-4193-88ef-ce3460f3d029"),

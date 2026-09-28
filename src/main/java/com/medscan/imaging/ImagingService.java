@@ -89,6 +89,10 @@ public class ImagingService {
         return aiEngine;
     }
 
+    public List<ImagingStudy> getAllStudies() {
+        return new java.util.ArrayList<>(studiesById.values());
+    }
+
     private void initSeedStudies() {
         UUID tenantHospital = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
         UUID doctorId = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");

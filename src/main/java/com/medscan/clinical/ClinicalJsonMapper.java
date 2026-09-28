@@ -58,7 +58,22 @@ public final class ClinicalJsonMapper {
         sb.append("\"heartRate\":").append(v.heartRate()).append(",");
         sb.append("\"temperature\":").append(v.temperature()).append(",");
         sb.append("\"weightKg\":").append(v.weightKg()).append(",");
+        sb.append("\"heightCm\":").append(v.heightCm()).append(",");
+        sb.append("\"bmi\":").append(v.bmi()).append(",");
         sb.append("\"bloodGlucose\":").append(v.bloodGlucose()).append(",");
+        sb.append("\"oxygenSaturation\":").append(v.oxygenSaturation()).append(",");
+        sb.append("\"respiratoryRate\":").append(v.respiratoryRate()).append(",");
+        sb.append("\"painScale\":").append(v.painScale()).append(",");
+        sb.append("\"bloodGroup\":\"").append(JsonHelper.escape(v.bloodGroup())).append("\",");
+        sb.append("\"allergies\":[")
+                .append(v.allergies().stream().map(a -> "\"" + JsonHelper.escape(a) + "\"").collect(Collectors.joining(",")))
+                .append("],");
+        sb.append("\"chronicConditions\":[")
+                .append(v.chronicConditions().stream().map(c -> "\"" + JsonHelper.escape(c) + "\"").collect(Collectors.joining(",")))
+                .append("],");
+        sb.append("\"emergencyContact\":\"").append(JsonHelper.escape(v.emergencyContact() != null ? v.emergencyContact() : "")).append("\",");
+        sb.append("\"triageLevel\":\"").append(JsonHelper.escape(v.triageLevel())).append("\",");
+        sb.append("\"notes\":\"").append(JsonHelper.escape(v.notes() != null ? v.notes() : "")).append("\",");
         sb.append("\"recordedBy\":\"").append(JsonHelper.escape(v.recordedBy())).append("\",");
         sb.append("\"recordedByRole\":\"").append(JsonHelper.escape(v.recordedByRole())).append("\"");
         sb.append("}");
@@ -209,7 +224,20 @@ public final class ClinicalJsonMapper {
         Integer hr = JsonHelper.getInt(body, "heartRate");
         Double temp = JsonHelper.getDouble(body, "temperature");
         Double weight = JsonHelper.getDouble(body, "weightKg");
+        Double height = JsonHelper.getDouble(body, "heightCm");
         Double glucose = JsonHelper.getDouble(body, "bloodGlucose");
+        Double spo2 = JsonHelper.getDouble(body, "oxygenSaturation");
+        if (spo2 == null) {
+            spo2 = JsonHelper.getDouble(body, "spo2");
+        }
+        Integer respRate = JsonHelper.getInt(body, "respiratoryRate");
+        Integer pain = JsonHelper.getInt(body, "painScale");
+        String bloodGroup = JsonHelper.getString(body, "bloodGroup");
+        List<String> allergies = JsonHelper.getStringList(body, "allergies");
+        List<String> chronicConditions = JsonHelper.getStringList(body, "chronicConditions");
+        String emergencyContact = JsonHelper.getString(body, "emergencyContact");
+        String triageLevel = JsonHelper.getString(body, "triageLevel");
+        String notes = JsonHelper.getString(body, "notes");
 
         return new VitalSigns(
                 UUID.randomUUID(),
@@ -220,7 +248,18 @@ public final class ClinicalJsonMapper {
                 hr != null ? hr : 70,
                 temp != null ? temp : 37.0,
                 weight != null ? weight : 65.0,
+                height != null ? height : 170.0,
+                null,
                 glucose != null ? glucose : 1.0,
+                spo2 != null ? spo2 : 98.0,
+                respRate != null ? respRate : 16,
+                pain != null ? pain : 0,
+                bloodGroup != null ? bloodGroup : "Inconnu",
+                allergies,
+                chronicConditions,
+                emergencyContact,
+                triageLevel,
+                notes,
                 recordedBy,
                 role
         );

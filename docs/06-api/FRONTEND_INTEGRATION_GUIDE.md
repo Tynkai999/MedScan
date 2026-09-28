@@ -332,7 +332,18 @@ Permet aux médecins et soignants de rechercher ou créer un patient au sein de 
       "heartRate": 72,
       "temperature": 36.8,
       "weightKg": 62.5,
+      "heightCm": 168.0,
+      "bmi": 22.1,
       "bloodGlucose": 0.95,
+      "oxygenSaturation": 98.5,
+      "respiratoryRate": 16,
+      "painScale": 0,
+      "bloodGroup": "A+",
+      "allergies": ["Pénicilline", "Arachide"],
+      "chronicConditions": ["Asthme léger"],
+      "emergencyContact": "Moussa Ouedraogo (+226 76 11 22 33)",
+      "triageLevel": "NORMAL",
+      "notes": "Constantes stables en consultation de routine.",
       "recordedBy": "Inf. Awa Kaboré",
       "recordedByRole": "NURSE"
     }
@@ -351,6 +362,9 @@ Permet aux médecins et soignants de rechercher ou créer un patient au sein de 
 }
 ```
 
+- **Consulter l'Historique des Constantes Enrichies & Bilan Clinique** : `GET /v1/patients/{id}/vitals`
+  - Retourne directement la liste des constantes avec le groupe sanguin, les allergies, comorbidités, SpO2, IMC calculé et le niveau d'alerte de triage (`NORMAL`, `ATTENTION`, `CRITICAL`).
+
 - **Saisie de Constantes Vitales (Infirmier / Médecin)** : `POST /v1/patients/{id}/vitals`
 ```json
 {
@@ -359,9 +373,15 @@ Permet aux médecins et soignants de rechercher ou créer un patient au sein de 
   "heartRate": 76,
   "temperature": 37.1,
   "weightKg": 68.5,
-  "bloodGlucose": 1.02
+  "heightCm": 170.0,
+  "bloodGlucose": 1.02,
+  "oxygenSaturation": 98.0,
+  "respiratoryRate": 16,
+  "painScale": 0,
+  "notes": "Patient calme, auscultation cardio-pulmonaire normale"
 }
 ```
+> **Héritage Automatique** : Si le groupe sanguin, les allergies ou le contact d'urgence ne sont pas ressaisis par l'infirmier, l'API les hérite et les renseigne automatiquement à partir du dossier maître du patient. De même, l'IMC (`bmi`) et le niveau de triage (`triageLevel`) sont calculés automatiquement s'ils sont omis.
 
 - **Saisie d'une Consultation Clinique (Médecin)** : `POST /v1/patients/{id}/consultations`
 ```json
@@ -519,6 +539,99 @@ Conformément à la déontologie médicale, l'IA ne valide jamais seule un diagn
 }
 ```
 - **Réponse Succès (200 OK)** : État de l'étude mis à jour à `VALIDATED_BY_DOCTOR`.
+
+---
+
+### 4.12 Tableaux de Bord & Statistiques Métier Multi-Acteurs (MOD-02 / MOD-03)
+Permet à l'application frontend d'alimenter les tableaux de bord personnalisés de chaque acteur (Médecin, Pharmacien, Radiologue, Infirmier, Patient, Livreur, Administrateur, Auditeur DPO) avec des KPIs consolidés, alertes cliniques de triage et tendances en une seule requête.
+
+- **Méthode** : `GET`
+- **Chemin** : `/v1/dashboard/stats`
+- **Paramètre optionnel** : `?role=DOCTOR` (ou `PHARMACIST`, `RADIOLOGIST`, `PATIENT`, `NURSE`, etc. — par défaut, l'API détecte automatiquement le rôle de l'utilisateur connecté).
+- **Rôles autorisés** : Tous les rôles authentifiés.
+
+#### Exemple de Réponse : Tableau de Bord Médecin (`DOCTOR`)
+```json
+{
+  "role": "DOCTOR",
+  "userId": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
+  "username": "doctor@medscan.org",
+  "tenantId": "e2241595-e068-46f7-8e82-ab2b9dd3c18a",
+  "tenantName": "CH_OUAGADOUGOU",
+  "kpis": {
+    "totalPatients": 2,
+    "facilityConsultations": 1,
+    "myConsultations": 1,
+    "facilityPrescriptions": 1,
+    "myPrescriptions": 1,
+    "pendingImagingReviews": 1,
+    "criticalAlertsCount": 1,
+    "breakGlassEmergencyOverrides": 0
+  },
+  "criticalAlerts": [
+    {
+      "id": "...",
+      "patientId": "dababb25-8dc9-402c-b527-15d9a4b1f380",
+      "patientName": "Ibrahim Compaore",
+      "alertType": "VITALS_ABNORMAL",
+      "severity": "ATTENTION",
+      "summary": "TA: 148/94 mmHg, Pouls: 84 bpm, SpO2: 96.0% (ATTENTION)",
+      "recordedAt": "2026-09-23T11:00:00Z"
+    }
+  ],
+  "recentActivities": [
+    {
+      "id": "...",
+      "timestamp": "2026-09-24T09:00:00Z",
+      "activityType": "CONSULTATION",
+      "title": "Consultation : Bilan de santé",
+      "description": "Diagnostic: Asthme intermittent",
+      "actorName": "Dr. Seydou Traore",
+      "status": "COMPLETED"
+    }
+  ],
+  "chartsData": {
+    "consultationsTrend": {
+      "Mai": 18,
+      "Juin": 24,
+      "Juil": 31,
+      "Août": 28,
+      "Sept": 35
+    },
+    "triageDistribution": {
+      "NORMAL": 1,
+      "ATTENTION": 1,
+      "CRITICAL": 0
+    }
+  }
+}
+```
+
+#### Exemple de Réponse : Tableau de Bord Patient (`PATIENT`)
+```json
+{
+  "role": "PATIENT",
+  "userId": "116286b8-79e3-48b6-b99e-06fed5f10ee4",
+  "username": "patient@medscan.org",
+  "tenantName": "CH_OUAGADOUGOU",
+  "kpis": {
+    "fullName": "Fatou Ouedraogo",
+    "nationalId": "BFA-2026-008412",
+    "bloodGroup": "A+",
+    "allergiesCount": 2,
+    "allergies": ["Pénicilline", "Arachide"],
+    "chronicConditions": ["Asthme léger"],
+    "emergencyContact": "Moussa Ouedraogo (+226 76 11 22 33)",
+    "lastBloodPressure": "120/80 mmHg",
+    "lastHeartRate": "72 bpm",
+    "lastOxygenSaturation": "98.5%",
+    "lastBmi": 22.1,
+    "lastTriageStatus": "NORMAL",
+    "totalConsultations": 1,
+    "totalPrescriptions": 1
+  }
+}
+```
 
 ---
 

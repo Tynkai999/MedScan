@@ -1168,6 +1168,31 @@
           }
         },
         {
+          "name": "04b. Consulter Constantes Enrichies & Bilan Clinique (Médecin / Soignant)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/patients/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e/vitals",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "patients",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+                "vitals"
+              ]
+            },
+            "description": "Retourne l'historique des constantes avec groupe sanguin, allergies, comorbidités, SpO2, IMC calculé et niveau de triage."
+          }
+        },
+        {
           "name": "05. Enregistrer Consultation Clinique (Médecin)",
           "request": {
             "method": "POST",
@@ -1534,6 +1559,137 @@
                 "report"
               ]
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Tableaux de Bord & Statistiques Métier (Multi-Acteurs)",
+      "item": [
+        {
+          "name": "01. Tableau de Bord — Médecin (KPIs, Alertes Triage, Consultations)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dashboard/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dashboard",
+                "stats"
+              ]
+            },
+            "description": "Retourne les KPIs du médecin (patients, consultations, ordonnances, imageries à revoir), alertes de triage rouge/jaune, activités récentes et tendances mensuelles."
+          }
+        },
+        {
+          "name": "02. Tableau de Bord — Pharmacien (Prescriptions à dispenser, Délais, Stocks)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pharmacist_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dashboard/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dashboard",
+                "stats"
+              ]
+            },
+            "description": "Retourne les ordonnances en attente de délivrance, taux de service, alertes stock faible et historique des dispensations."
+          }
+        },
+        {
+          "name": "03. Tableau de Bord — Radiologue (Examens, Inférence IA, Concordance)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{radiologist_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dashboard/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dashboard",
+                "stats"
+              ]
+            },
+            "description": "Retourne les examens d'imagerie en attente d'IA, les comptes-rendus à signer et le taux d'accord médecin/IA."
+          }
+        },
+        {
+          "name": "04. Tableau de Bord — Patient (Mon carnet, Dernières constantes, Ordonnances)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dashboard/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dashboard",
+                "stats"
+              ]
+            },
+            "description": "Retourne le résumé médical personnel du patient : groupe sanguin, allergies, dernières constantes, ordonnances actives et historique."
+          }
+        },
+        {
+          "name": "05. Tableau de Bord — Vue Rôle Forcée (Admin / DPO inspectant une vue spécifique)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dashboard/stats?role=NURSE",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dashboard",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "NURSE"
+                }
+              ]
+            },
+            "description": "Permet aux administrateurs ou superviseurs de visualiser les métriques sous l'angle d'un autre rôle."
           }
         }
       ]
