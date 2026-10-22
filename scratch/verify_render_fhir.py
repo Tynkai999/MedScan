@@ -120,8 +120,10 @@ def main():
     if status == 200 and isinstance(rx_body, dict):
         print(f"ResourceType: {rx_body.get('resourceType')}")
         print(f"Intent: {rx_body.get('intent')}, Status: {rx_body.get('status')}")
-        items = rx_body.get("contained", [])
-        print(f"Médicaments prescrits: {len(items)} lignes")
+        items = rx_body.get("dosageInstruction", [])
+        print(f"Médicaments prescrits: {len(items)} lignes posologiques")
+        for item in items:
+            print(f"  - {item.get('text')}")
         print("OK: Prescription FHIR R4 MedicationRequest validée.")
     else:
         print(f"Réponse: {rx_body}")
