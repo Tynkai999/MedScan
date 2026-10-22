@@ -659,4 +659,122 @@ class MedscanServerTest {
         assertTrue(resp2.body().contains("\"duplicateCount\":1"));
         assertTrue(resp2.body().contains("\"status\":\"DUPLICATE_IGNORED\""));
     }
+
+    // ==========================================
+    // TESTS INTÉGRATION FHIR R4 (MOD-07)
+    // ==========================================
+
+    @Test
+    @DisplayName("HTTP GET /fhir/r4/metadata renvoie 200 CapabilityStatement publiquement sans auth")
+    void testFhirMetadataEndpoint() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/fhir/r4/metadata"))
+                .header("Accept", "application/fhir+json")
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.headers().firstValue("Content-Type").orElse("").contains("application/fhir+json"));
+        assertTrue(response.body().contains("\"resourceType\":\"CapabilityStatement\"") || response.body().contains("\"resourceType\": \"CapabilityStatement\""));
+        assertTrue(response.body().contains("\"fhirVersion\":\"4.0.1\"") || response.body().contains("\"fhirVersion\": \"4.0.1\""));
+    }
+
+    @Test
+    @DisplayName("HTTP GET /fhir/r4/Patient/{id} renvoie la ressource Patient FHIR avec authentification")
+    void testFhirPatientGetEndpoint() throws Exception {
+        String token = login("doctor@medscan.org", "Doctor123!");
+        String patientId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/fhir/r4/Patient/" + patientId))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/fhir+json")
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"resourceType\": \"Patient\"") || response.body().contains("\"resourceType\":\"Patient\""));
+        assertTrue(response.body().contains("Fatou"));
+        assertTrue(response.body().contains("Ouedraogo"));
+        assertTrue(response.body().contains("BFA-2026-008412"));
+    }
+
+    @Test
+    @DisplayName("HTTP GET /fhir/r4/Patient/{id} sans jeton renvoie 401 Unauthorized")
+    void testFhirPatientUnauthorized() throws Exception {
+        String patientId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/fhir/r4/Patient/" + patientId))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(401, response.statusCode());
+    }
+
+    @Test
+    @DisplayName("HTTP GET /fhir/r4/Observation renvoie les constantes vitales codifiées LOINC")
+    void testFhirObservationsSearchEndpoint() throws Exception {
+        String token = login("doctor@medscan.org", "Doctor123!");
+        String patientId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/fhir/r4/Observation?patient=" + patientId))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/fhir+json")
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"resourceType\": \"Bundle\"") || response.body().contains("\"resourceType\":\"Bundle\""));
+        assertTrue(response.body().contains("85354-9") || response.body().contains("8867-4"));
+    }
+
+    @Test
+    @DisplayName("HTTP GET /fhir/r4/MedicationRequest/{id} renvoie la prescription codifiée FHIR")
+    void testFhirMedicationRequestGetEndpoint() throws Exception {
+        String token = login("doctor@medscan.org", "Doctor123!");
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/fhir/r4/MedicationRequest/RX-2026-0042"))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/fhir+json")
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"resourceType\": \"MedicationRequest\"") || response.body().contains("\"resourceType\":\"MedicationRequest\""));
+        assertTrue(response.body().contains("RX-2026-0042"));
+    }
+
+    @Test
+    @DisplayName("HTTP GET /fhir/r4/Bundle?patient={id} exporte le dossier complet en Collection Bundle")
+    void testFhirBundlePatientExportEndpoint() throws Exception {
+        String token = login("doctor@medscan.org", "Doctor123!");
+        String patientId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/fhir/r4/Bundle?patient=" + patientId))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/fhir+json")
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"resourceType\": \"Bundle\"") || response.body().contains("\"resourceType\":\"Bundle\""));
+        assertTrue(response.body().contains("\"type\": \"collection\"") || response.body().contains("\"type\":\"collection\""));
+        assertTrue(response.body().contains("Patient"));
+        assertTrue(response.body().contains("Observation"));
+    }
 }

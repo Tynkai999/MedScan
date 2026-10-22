@@ -5,8 +5,8 @@
 **Version du système** : `0.1.0-SNAPSHOT` (Architecture Validée & Déployée)  
 **Environnement de production actif** : [`https://medscan-sluw.onrender.com/medscan/api`](https://medscan-sluw.onrender.com/medscan/api)  
 **Dépôt officiel** : [`https://github.com/Tynkai999/MedScan.git`](https://github.com/Tynkai999/MedScan.git) (Branche `main`)  
-**Statut global de la suite de tests** : **59/59 tests passants (100% au vert)**  
-**Nouveautés Récentes** : Constantes Vitales Enrichies (Groupe Sanguin, Allergies, SpO2, IMC, Triage) + Tableaux de Bord Multi-Acteurs (`/v1/dashboard/stats`).
+**Statut global de la suite de tests** : **107 tests passants (100% au vert)**  
+**Nouveautés Récentes** : Hub d'Interopérabilité Internationale HL7 FHIR R4 (MOD-07), Synchronisation Hors-Ligne & Idempotence (MOD-10), Logistique & Remise Sécurisée OTP (MOD-09).
 
 ---
 
@@ -50,7 +50,7 @@ Ce document fournit à l'agent IA (qu'il soit chargé de la modélisation Machin
 ┌────────────────────┐    ┌────────────────────┐    ┌────────────────────┐
 │ MOD-07 : INTEROP   │    │ MOD-08 : PHARMACY  │    │ MOD-09 : DELIVERY  │
 │ HUB (FHIR/HL7)     │    │ & PRESCRIPTIONS    │    │ & LOGISTIQUE (OTP) │
-│  [SPÉCIFIÉ / ROAD] │    │  [100% OPÉRATIONNEL│    │  [100% OPÉRATIONNEL│
+│  [100% OPÉRATIONNEL│    │  [100% OPÉRATIONNEL│    │  [100% OPÉRATIONNEL│
 └────────────────────┘    └────────────────────┘    └────────────────────┘
     │                               │                               │
     ├───────────────────────────────┴───────────────────────────────┤
@@ -67,12 +67,12 @@ Ce document fournit à l'agent IA (qu'il soit chargé de la modélisation Machin
 | Module | Intitulé | État Actuel | Couverture Test | Déploiement Render |
 | :--- | :--- | :---: | :---: | :---: |
 | **MOD-01** | IAM & Security Gateway (JWT RS256, RBAC) | **100% Terminé** | 22 tests unitaires | **En Ligne** |
-| **MOD-02** | Multi-Tenancy & Isolation PostgreSQL RLS | **100% Terminé** | 3 tests & Migrations V1-V3 | **En Ligne** |
-| **MOD-03** | Patient & Dossier Longitudinal (Vitals, Consultations) | **100% Terminé** | 4 tests métier | **En Ligne** |
+| **MOD-02** | Multi-Tenancy & Isolation PostgreSQL RLS | **100% Terminé** | 3 tests & Migrations V1-V9 | **En Ligne** |
+| **MOD-03** | Patient & Dossier Longitudinal (Vitals, Consultations) | **100% Terminé** | 8 tests métier | **En Ligne** |
 | **MOD-04** | Consentement & Urgence Dérogatoire (Break-Glass) | **100% Terminé** | Validé en intégration | **En Ligne** |
 | **MOD-05** | Imagerie Médicale & Métadonnées PACS | **100% Terminé** | 4 tests d'imagerie | **En Ligne** |
 | **MOD-06** | Passerelle IA Découplée & Simulation Grad-CAM | **100% Terminé** | Inférence + Fallback testés | **En Ligne** |
-| **MOD-07** | Interoperability Hub (Standard HL7 FHIR R4) | *Spécifié* | À implémenter | Backlog (Phase 2) |
+| **MOD-07** | Hub d'Interopérabilité Internationale HL7 FHIR R4 | **100% Terminé** | 9 tests unitaires + 6 intégration | **En Ligne** |
 | **MOD-08** | E-Prescription & Dispensation en Pharmacie | **100% Terminé** | Validé en intégration | **En Ligne** |
 | **MOD-09** | Delivery Sécurisée & Remise par Code OTP | **100% Terminé** | 5 tests unitaires & intégration | **En Ligne** |
 | **MOD-10** | Synchronisation Hors-Ligne & Delta-Sync | **100% Terminé** | 7 tests unitaires & intégration | **En Ligne** |

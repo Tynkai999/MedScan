@@ -2214,6 +2214,231 @@
           }
         }
       ]
+    },
+    {
+      "name": "13. Interopérabilité Internationale HL7 FHIR R4 (MOD-07)",
+      "item": [
+        {
+          "name": "01. CapabilityStatement (GET /fhir/r4/metadata)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/r4/metadata",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "r4",
+                "metadata"
+              ]
+            },
+            "description": "Découverte publique des capacités HL7 FHIR R4 supportées (Patient, Observation, MedicationRequest, Bundle, OAuth2)."
+          }
+        },
+        {
+          "name": "02. Consulter Patient FHIR R4 (GET /fhir/r4/Patient/:id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/r4/Patient/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "r4",
+                "Patient",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"
+              ]
+            },
+            "description": "Consultation du dossier patient au format standard FHIR R4 avec extensions groupe sanguin, allergies, IMC."
+          }
+        },
+        {
+          "name": "03. Rechercher Patients FHIR (GET /fhir/r4/Patient?identifier=...)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/r4/Patient?identifier=BFA-2026-008412",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "r4",
+                "Patient"
+              ],
+              "query": [
+                {
+                  "key": "identifier",
+                  "value": "BFA-2026-008412"
+                }
+              ]
+            },
+            "description": "Recherche de patients via identifiant national ou nom, retournée sous forme de Bundle FHIR de type searchset."
+          }
+        },
+        {
+          "name": "04. Créer Patient via HL7 FHIR R4 (POST /fhir/r4/Patient)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Patient\",\n  \"identifier\": [\n    {\n      \"system\": \"urn:oid:medscan:national-id\",\n      \"value\": \"BFA-2026-009944\"\n    }\n  ],\n  \"name\": [\n    {\n      \"use\": \"official\",\n      \"family\": \"Zongo\",\n      \"given\": [\"Moussa\"]\n    }\n  ],\n  \"telecom\": [\n    {\n      \"system\": \"phone\",\n      \"value\": \"+226 70 55 44 33\"\n    }\n  ],\n  \"gender\": \"male\",\n  \"birthDate\": \"1988-03-22\",\n  \"extension\": [\n    {\n      \"url\": \"http://medscan.org/fhir/StructureDefinition/blood-group\",\n      \"valueString\": \"O+\"\n    },\n    {\n      \"url\": \"http://medscan.org/fhir/StructureDefinition/allergies\",\n      \"valueString\": \"Aspirine\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/fhir/r4/Patient",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "r4",
+                "Patient"
+              ]
+            },
+            "description": "Création d'un dossier patient conforme HL7 FHIR R4 avec ingestion des extensions cliniques."
+          }
+        },
+        {
+          "name": "05. Rechercher Observations Vitales LOINC (GET /fhir/r4/Observation?patient=...)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/r4/Observation?patient=99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "r4",
+                "Observation"
+              ],
+              "query": [
+                {
+                  "key": "patient",
+                  "value": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"
+                }
+              ]
+            },
+            "description": "Recherche des constantes vitales codifiées en standards internationaux LOINC (85354-9, 8867-4, 8310-5, 39156-5, 2708-6) et unités UCUM."
+          }
+        },
+        {
+          "name": "06. Consulter Ordonnance MedicationRequest (GET /fhir/r4/MedicationRequest/:id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/r4/MedicationRequest/RX-2026-0042",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "r4",
+                "MedicationRequest",
+                "RX-2026-0042"
+              ]
+            },
+            "description": "Consultation de prescription sous forme de ressource FHIR MedicationRequest avec instructions posologiques structurées."
+          }
+        },
+        {
+          "name": "07. Exporter Dossier Complet en Collection Bundle (GET /fhir/r4/Bundle?patient=...)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/r4/Bundle?patient=99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "r4",
+                "Bundle"
+              ],
+              "query": [
+                {
+                  "key": "patient",
+                  "value": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"
+                }
+              ]
+            },
+            "description": "Export complet du dossier médical en Bundle de type collection pour interopérabilité hospitalière (OpenMRS, DHIS2, OMS)."
+          }
+        }
+      ]
     }
   ]
 }

@@ -981,6 +981,44 @@ Fournit un passeport médical d'urgence compact vérifiable sans réseau (tamper
 - **Permissions requises** : Personnel soignant ou patient lui-même
 - **Réponse Succès (200 OK)** : Objet `EmergencyCard` prêt pour affichage QR-code ou triage Samu.
 
+### 4.17 Module MOD-07 : Hub d'Interopérabilité Internationale HL7 FHIR R4
+
+Conforme à la spécification internationale **HL7 FHIR R4 (v4.0.1)**, ce module permet l'interfaçage transparent avec les logiciels hospitaliers (OpenMRS, Bahmni), les dossiers nationaux de santé et les systèmes de surveillance épidémiologique (DHIS2, OMS).
+
+MIME Types supportés : `application/fhir+json` et `application/json`.
+
+#### 4.17.1 CapabilityStatement (Découverte Publique de Capacités)
+- **Méthode** : `GET`
+- **Chemin** : `/fhir/r4/metadata`
+- **Authentification** : Non requise (Découverte publique pour passerelles et routeurs d'interopérabilité FHIR)
+- **Description** : Renvoie le document formel décrivant les ressources prises en charge (`Patient`, `Observation`, `MedicationRequest`, `Bundle`), la version `4.0.1` et la sécurité OAuth2 / Bearer JWT RS256.
+
+#### 4.17.2 Ressource Patient FHIR R4
+- **Recherche** : `GET /fhir/r4/Patient?identifier=BFA-2026-008412&name=Fatou` (Bundle `searchset`)
+- **Lecture** : `GET /fhir/r4/Patient/{id}` (Ressource standard avec nom officiel, identifiant national, sexe, date de naissance, et extensions personnalisées `blood-group`, `allergies`, `chronic-conditions`, `bmi`)
+- **Création** : `POST /fhir/r4/Patient` (Body JSON FHIR Patient, rôles autorisés : `DOCTOR`, `NURSE`, `ADMIN`)
+
+#### 4.17.3 Ressource Observation FHIR R4 (Codification Internationale LOINC & UCUM)
+- **Méthode** : `GET`
+- **Chemin** : `/fhir/r4/Observation?patient={patientId}&code={loincCode}`
+- **Codes LOINC standards intégrés** :
+  - `85354-9` : Blood pressure panel (composants `8480-6` Systolique et `8462-4` Diastolique, unité `mm[Hg]`)
+  - `8867-4` : Fréquence cardiaque (Heart rate, unité `/min`)
+  - `8310-5` : Température corporelle (Body temperature, unité `Cel`)
+  - `39156-5` : Indice de masse corporelle (BMI, unité `kg/m2`)
+  - `2708-6` : Saturation pulsée en oxygène (Oxygen saturation, unité `%`)
+  - `29463-7` : Poids corporel (`kg`)
+  - `8302-2` : Taille corporelle (`cm`)
+
+#### 4.17.4 Ressource MedicationRequest FHIR R4
+- **Recherche** : `GET /fhir/r4/MedicationRequest?patient={patientId}`
+- **Lecture** : `GET /fhir/r4/MedicationRequest/{idOrCode}` (Prescription avec posologie structurée, instructions de dosage, intention `order`, statut `active` / `completed`)
+
+#### 4.17.5 Export Complet du Dossier Médical Partagé en Collection Bundle
+- **Méthode** : `GET`
+- **Chemin** : `/fhir/r4/Bundle?patient={patientId}`
+- **Description** : Exporte l'intégralité du dossier (Patient, toutes les Observations vitales LOINC, toutes les prescriptions) dans un Bundle standard pour interopérabilité hospitalière (OpenMRS, DHIS2, ministères de la santé).
+
 ---
 
 ## 5. Modèle Standardisé des Erreurs (RFC 7807 Problem Details)

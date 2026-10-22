@@ -63,6 +63,8 @@ import com.medscan.security.tenant.TenantContext;
 import com.medscan.security.tenant.TenantJsonMapper;
 import com.medscan.security.tenant.TenantRegistry;
 import com.medscan.security.tenant.VerifiedTenantIdentity;
+import com.medscan.interop.fhir.FhirConstants;
+import com.medscan.interop.fhir.FhirService;
 import com.medscan.sync.EmergencyCard;
 import com.medscan.sync.SyncBatchRequest;
 import com.medscan.sync.SyncBatchResponse;
@@ -96,6 +98,7 @@ public class MedscanServer {
     private final DeliveryService deliveryService;
     private final DashboardService dashboardService;
     private final SyncService syncService;
+    private final FhirService fhirService;
 
     public MedscanServer(int port) {
         this.port = port;
@@ -110,6 +113,7 @@ public class MedscanServer {
         this.deliveryService = new DeliveryService(clinicalService, tenantRegistry);
         this.dashboardService = new DashboardService(clinicalService, imagingService, tenantRegistry, deliveryService);
         this.syncService = new SyncService(clinicalService);
+        this.fhirService = new FhirService(clinicalService);
     }
 
     public DeliveryService getDeliveryService() {
@@ -138,6 +142,10 @@ public class MedscanServer {
 
     public SyncService getSyncService() {
         return syncService;
+    }
+
+    public FhirService getFhirService() {
+        return fhirService;
     }
 
     public static void main(String[] args) throws IOException {
@@ -274,6 +282,22 @@ public class MedscanServer {
                     handleSyncPush(exchange);
                 } else if (subPath.startsWith("/v1/sync/emergency-card/") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handleEmergencyCard(exchange, subPath.substring("/v1/sync/emergency-card/".length()));
+                } else if (subPath.equals("/fhir/r4/metadata") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleFhirMetadata(exchange);
+                } else if (subPath.equals("/fhir/r4/Patient") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleFhirPatientSearch(exchange);
+                } else if (subPath.equals("/fhir/r4/Patient") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleFhirPatientCreate(exchange);
+                } else if (subPath.startsWith("/fhir/r4/Patient/")) {
+                    handleFhirPatientGet(exchange, subPath.substring("/fhir/r4/Patient/".length()));
+                } else if (subPath.equals("/fhir/r4/Observation") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleFhirObservationSearch(exchange);
+                } else if (subPath.equals("/fhir/r4/MedicationRequest") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleFhirMedicationRequestSearch(exchange);
+                } else if (subPath.startsWith("/fhir/r4/MedicationRequest/")) {
+                    handleFhirMedicationRequestGet(exchange, subPath.substring("/fhir/r4/MedicationRequest/".length()));
+                } else if (subPath.equals("/fhir/r4/Bundle") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleFhirBundleGet(exchange);
                 } else {
                     sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Point d'accès introuvable: " + subPath + "\"}");
                 }
@@ -298,6 +322,9 @@ public class MedscanServer {
             }
             if (!normalized.startsWith("/")) {
                 normalized = "/" + normalized;
+            }
+            if (normalized.startsWith("/v1/fhir/")) {
+                normalized = normalized.substring(3);
             }
             return normalized;
         }
@@ -1576,6 +1603,293 @@ public class MedscanServer {
                 sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Patient introuvable\",\"status\":404,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
             } catch (Exception e) {
                 sendJson(exchange, 500, "{\"type\":\"https://medscan.org/errors/internal\",\"title\":\"Erreur serveur\",\"status\":500,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        // ==========================================
+        // HUB D'INTEROPÉRABILITÉ HL7 FHIR R4 (MOD-07)
+        // ==========================================
+
+        private void handleFhirMetadata(HttpExchange exchange) throws IOException {
+            String baseUrl = getFhirBaseUrl(exchange);
+            String cap = fhirService.getCapabilityStatement(baseUrl);
+            sendFhirJson(exchange, 200, cap);
+        }
+
+        private void handleFhirPatientGet(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String cleanTail = tail;
+            if (cleanTail.contains("?")) cleanTail = cleanTail.substring(0, cleanTail.indexOf("?"));
+            if (cleanTail.endsWith("/")) cleanTail = cleanTail.substring(0, cleanTail.length() - 1);
+
+            UUID patientId;
+            try {
+                patientId = UUID.fromString(cleanTail);
+            } catch (IllegalArgumentException e) {
+                sendFhirJson(exchange, 400, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"invalid\",\"diagnostics\":\"Format UUID invalide: " + JsonHelper.escape(cleanTail) + "\"}]}");
+                return;
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                String patientFhir = fhirService.getPatient(patientId, principal.getUserId(), principal.getName(), role, principal.getTenantId(), getFhirBaseUrl(exchange));
+                sendFhirJson(exchange, 200, patientFhir);
+            } catch (SecurityException e) {
+                sendFhirJson(exchange, 403, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"forbidden\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (IllegalArgumentException e) {
+                sendFhirJson(exchange, 404, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"not-found\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (Exception e) {
+                sendFhirJson(exchange, 500, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"exception\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            }
+        }
+
+        private void handleFhirPatientSearch(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            String identifier = null;
+            String name = null;
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2) {
+                        String key = kv[0].trim();
+                        String val = kv[1].trim();
+                        if ("identifier".equalsIgnoreCase(key)) identifier = val;
+                        else if ("name".equalsIgnoreCase(key)) name = val;
+                    }
+                }
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                String bundle = fhirService.searchPatients(identifier, name, principal.getUserId(), principal.getName(), role, principal.getTenantId(), exchange.getRequestURI().toString());
+                sendFhirJson(exchange, 200, bundle);
+            } catch (SecurityException e) {
+                sendFhirJson(exchange, 403, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"forbidden\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (Exception e) {
+                sendFhirJson(exchange, 500, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"exception\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            }
+        }
+
+        private void handleFhirPatientCreate(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+            try {
+                String created = fhirService.createPatient(body, principal.getUserId(), principal.getName(), role, principal.getTenantId(), getFhirBaseUrl(exchange));
+                sendFhirJson(exchange, 201, created);
+            } catch (SecurityException e) {
+                sendFhirJson(exchange, 403, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"forbidden\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (IllegalArgumentException e) {
+                sendFhirJson(exchange, 400, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"invalid\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (Exception e) {
+                sendFhirJson(exchange, 500, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"exception\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            }
+        }
+
+        private void handleFhirObservationSearch(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            String patientParam = null;
+            String codeParam = null;
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2) {
+                        String key = kv[0].trim();
+                        String val = kv[1].trim();
+                        if ("patient".equalsIgnoreCase(key) || "subject".equalsIgnoreCase(key)) patientParam = val;
+                        else if ("code".equalsIgnoreCase(key)) codeParam = val;
+                    }
+                }
+            }
+
+            UUID patientId = null;
+            if (patientParam != null && !patientParam.isBlank()) {
+                if (patientParam.startsWith("Patient/")) patientParam = patientParam.substring("Patient/".length());
+                try {
+                    patientId = UUID.fromString(patientParam);
+                } catch (IllegalArgumentException ignored) {}
+            }
+
+            if (patientId == null && principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (pOpt.isPresent()) patientId = pOpt.get().id();
+            }
+
+            if (patientId == null) {
+                List<Patient> list = clinicalService.searchPatients(principal.getTenantId(), null, principal.getRoles());
+                if (!list.isEmpty()) patientId = list.get(0).id();
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                String bundle = fhirService.searchObservations(patientId, codeParam, principal.getUserId(), principal.getName(), role, principal.getTenantId(), exchange.getRequestURI().toString());
+                sendFhirJson(exchange, 200, bundle);
+            } catch (SecurityException e) {
+                sendFhirJson(exchange, 403, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"forbidden\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (IllegalArgumentException e) {
+                sendFhirJson(exchange, 404, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"not-found\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (Exception e) {
+                sendFhirJson(exchange, 500, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"exception\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            }
+        }
+
+        private void handleFhirMedicationRequestSearch(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            String patientParam = null;
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2 && ("patient".equalsIgnoreCase(kv[0].trim()) || "subject".equalsIgnoreCase(kv[0].trim()))) {
+                        patientParam = kv[1].trim();
+                    }
+                }
+            }
+
+            UUID patientId = null;
+            if (patientParam != null && !patientParam.isBlank()) {
+                if (patientParam.startsWith("Patient/")) patientParam = patientParam.substring("Patient/".length());
+                try {
+                    patientId = UUID.fromString(patientParam);
+                } catch (IllegalArgumentException ignored) {}
+            }
+
+            if (patientId == null && principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (pOpt.isPresent()) patientId = pOpt.get().id();
+            }
+
+            if (patientId == null) {
+                List<Patient> list = clinicalService.searchPatients(principal.getTenantId(), null, principal.getRoles());
+                if (!list.isEmpty()) patientId = list.get(0).id();
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                String bundle = fhirService.searchMedicationRequests(patientId, principal.getUserId(), principal.getName(), role, principal.getTenantId(), exchange.getRequestURI().toString());
+                sendFhirJson(exchange, 200, bundle);
+            } catch (SecurityException e) {
+                sendFhirJson(exchange, 403, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"forbidden\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (Exception e) {
+                sendFhirJson(exchange, 500, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"exception\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            }
+        }
+
+        private void handleFhirMedicationRequestGet(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String cleanTail = tail;
+            if (cleanTail.contains("?")) cleanTail = cleanTail.substring(0, cleanTail.indexOf("?"));
+            if (cleanTail.endsWith("/")) cleanTail = cleanTail.substring(0, cleanTail.length() - 1);
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                String rxJson = fhirService.getMedicationRequest(cleanTail, principal.getUserId(), principal.getName(), role, principal.getTenantId(), getFhirBaseUrl(exchange));
+                sendFhirJson(exchange, 200, rxJson);
+            } catch (SecurityException e) {
+                sendFhirJson(exchange, 403, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"forbidden\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (IllegalArgumentException e) {
+                sendFhirJson(exchange, 404, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"not-found\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (Exception e) {
+                sendFhirJson(exchange, 500, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"exception\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            }
+        }
+
+        private void handleFhirBundleGet(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            String patientParam = null;
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2 && ("patient".equalsIgnoreCase(kv[0].trim()) || "patientId".equalsIgnoreCase(kv[0].trim()))) {
+                        patientParam = kv[1].trim();
+                    }
+                }
+            }
+
+            UUID patientId = null;
+            if (patientParam != null && !patientParam.isBlank()) {
+                if (patientParam.startsWith("Patient/")) patientParam = patientParam.substring("Patient/".length());
+                try {
+                    patientId = UUID.fromString(patientParam);
+                } catch (IllegalArgumentException ignored) {}
+            }
+
+            if (patientId == null && principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (pOpt.isPresent()) patientId = pOpt.get().id();
+            }
+
+            if (patientId == null) {
+                List<Patient> list = clinicalService.searchPatients(principal.getTenantId(), null, principal.getRoles());
+                if (!list.isEmpty()) patientId = list.get(0).id();
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                String bundle = fhirService.exportPatientRecordAsBundle(patientId, principal.getUserId(), principal.getName(), role, principal.getTenantId(), exchange.getRequestURI().toString());
+                sendFhirJson(exchange, 200, bundle);
+            } catch (SecurityException e) {
+                sendFhirJson(exchange, 403, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"forbidden\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (IllegalArgumentException e) {
+                sendFhirJson(exchange, 404, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"not-found\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            } catch (Exception e) {
+                sendFhirJson(exchange, 500, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"exception\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            }
+        }
+
+        private String getFhirBaseUrl(HttpExchange exchange) {
+            String host = exchange.getRequestHeaders().getFirst("Host");
+            if (host == null || host.isBlank()) {
+                host = "localhost:" + port;
+            }
+            String proto = "http";
+            if (host.contains("onrender.com") || "https".equalsIgnoreCase(exchange.getRequestHeaders().getFirst("X-Forwarded-Proto"))) {
+                proto = "https";
+            }
+            return proto + "://" + host + CONTEXT_PATH + "/fhir/r4";
+        }
+
+        private void sendFhirJson(HttpExchange exchange, int statusCode, String fhirJson) throws IOException {
+            byte[] bytes = fhirJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", FhirConstants.MIME_FHIR_JSON);
+            exchange.sendResponseHeaders(statusCode, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
             }
         }
 

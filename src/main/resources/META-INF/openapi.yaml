@@ -908,6 +908,214 @@ paths:
         '404':
           description: Patient not found
 
+  /fhir/r4/metadata:
+    get:
+      summary: FHIR R4 CapabilityStatement (Conformité & Découverte de capacités)
+      description: Découverte publique des capacités du serveur FHIR R4, profils supportés (Patient, Observation, MedicationRequest, Bundle) et sécurité OAuth2.
+      operationId: getFhirMetadata
+      responses:
+        '200':
+          description: Document CapabilityStatement conforme HL7 FHIR R4
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+            application/json:
+              schema:
+                type: object
+
+  /fhir/r4/Patient:
+    get:
+      summary: Recherche de dossiers patients au format HL7 FHIR R4
+      operationId: searchFhirPatients
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: identifier
+          in: query
+          required: false
+          description: Numéro national d'identification (ex. BFA-2026-008412)
+          schema:
+            type: string
+        - name: name
+          in: query
+          required: false
+          description: Nom ou prénom du patient
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Bundle FHIR de type searchset contenant les correspondances
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+        '401':
+          description: Non authentifié
+        '403':
+          description: Accès interdit
+    post:
+      summary: Création d'un dossier patient via ressource standard HL7 FHIR R4
+      operationId: createFhirPatient
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/fhir+json:
+            schema:
+              type: object
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Patient créé avec succès au format FHIR R4
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+        '400':
+          description: Ressource FHIR invalide
+        '401':
+          description: Non authentifié
+        '403':
+          description: Rôle insuffisant
+
+  /fhir/r4/Patient/{id}:
+    get:
+      summary: Consultation d'un patient au format HL7 FHIR R4
+      operationId: getFhirPatient
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identifiant UUID du patient
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Ressource Patient standard FHIR R4 avec extensions cliniques MedScan (groupe sanguin, allergies, IMC)
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+        '401':
+          description: Non authentifié
+        '403':
+          description: Accès refusé
+        '404':
+          description: Patient introuvable
+
+  /fhir/r4/Observation:
+    get:
+      summary: Recherche d'observations vitales codifiées LOINC & unités UCUM
+      operationId: searchFhirObservations
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patient
+          in: query
+          required: true
+          description: UUID du patient
+          schema:
+            type: string
+            format: uuid
+        - name: code
+          in: query
+          required: false
+          description: Code LOINC spécifique (ex. 85354-9 tension, 8867-4 pouls, 8310-5 temp, 39156-5 IMC, 2708-6 SpO2)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Bundle searchset d'Observations cliniques LOINC
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+        '401':
+          description: Non authentifié
+        '403':
+          description: Accès interdit
+
+  /fhir/r4/MedicationRequest:
+    get:
+      summary: Recherche des ordonnances électroniques au format FHIR R4
+      operationId: searchFhirMedicationRequests
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patient
+          in: query
+          required: true
+          description: UUID du patient
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bundle searchset de MedicationRequests
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+
+  /fhir/r4/MedicationRequest/{id}:
+    get:
+      summary: Consultation d'une ordonnance FHIR MedicationRequest
+      operationId: getFhirMedicationRequest
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Code d'ordonnance ou UUID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ressource MedicationRequest FHIR R4
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+        '404':
+          description: Ordonnance introuvable
+
+  /fhir/r4/Bundle:
+    get:
+      summary: Export complet du Dossier Médical Partagé en Collection Bundle FHIR R4
+      description: Exporte l'intégralité du dossier (Patient, Observations LOINC, MedicationRequests) dans un Bundle standard pour interopérabilité hospitalière (OpenMRS, DHIS2, dossiers nationaux).
+      operationId: exportFhirBundle
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patient
+          in: query
+          required: true
+          description: UUID du patient
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bundle de type collection contenant toutes les ressources cliniques du patient
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+        '401':
+          description: Non authentifié
+        '403':
+          description: Accès interdit
+        '404':
+          description: Patient introuvable
+
 components:
   securitySchemes:
     BearerAuth:
