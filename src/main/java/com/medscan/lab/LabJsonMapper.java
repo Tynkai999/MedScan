@@ -48,7 +48,7 @@ public final class LabJsonMapper {
         sb.append("\"status\":\"").append(JsonHelper.escape(order.status())).append("\",");
         sb.append("\"clinicalIndication\":").append(order.clinicalIndication() != null ? "\"" + JsonHelper.escape(order.clinicalIndication()) + "\"" : "null").append(",");
         sb.append("\"sampleCollectedAt\":").append(order.sampleCollectedAt() != null ? "\"" + order.sampleCollectedAt() + "\"" : "null").append(",");
-        sb.append("\"validatedAt\":").append(order.validatedAt() != null ? "\"" + order.validatedAt() : "null").append(",");
+        sb.append("\"validatedAt\":").append(order.validatedAt() != null ? "\"" + order.validatedAt() + "\"" : "null").append(",");
         sb.append("\"hasCriticalAlert\":").append(order.hasCriticalAlert()).append(",");
         sb.append("\"createdAt\":\"").append(order.createdAt()).append("\",");
         sb.append("\"results\":[");
