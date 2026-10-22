@@ -2439,6 +2439,657 @@
           }
         }
       ]
+    },
+    {
+      "name": "14. Rendez-vous & Téléconsultation Sécurisée (MOD-12)",
+      "item": [
+        {
+          "name": "01. Lister les rendez-vous (GET /v1/appointments)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/appointments?role=doctor",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "doctor"
+                }
+              ]
+            },
+            "description": "Lister les rendez-vous programmés pour un médecin, praticien ou patient."
+          }
+        },
+        {
+          "name": "02. Prendre un rendez-vous (POST /v1/appointments)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"practitionerId\": \"33333333-3333-3333-3333-333333333333\",\n  \"practitionerRole\": \"DOCTOR\",\n  \"type\": \"TELECONSULTATION\",\n  \"startTime\": \"2026-11-01T09:00:00Z\",\n  \"endTime\": \"2026-11-01T09:30:00Z\",\n  \"reason\": \"Consultation de suivi cardiologique et tension art\\u00e9rielle\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/appointments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Création d'un rendez-vous médical présentiel ou téléconsultation."
+          }
+        },
+        {
+          "name": "03. Confirmer le rendez-vous (POST /v1/appointments/:id/confirm)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/appointments/{{appointment_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "appointments",
+                "{{appointment_id}}",
+                "confirm"
+              ]
+            },
+            "description": "Confirmation du rendez-vous par le praticien avec génération automatique du lien de téléconsultation si applicable."
+          }
+        },
+        {
+          "name": "04. Démarrer la téléconsultation (POST /v1/appointments/:id/start-teleconsult)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/appointments/{{appointment_id}}/start-teleconsult",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "appointments",
+                "{{appointment_id}}",
+                "start-teleconsult"
+              ]
+            },
+            "description": "Lancement de la salle WebRTC / Jitsi sécurisée avec token d'accès chiffré."
+          }
+        },
+        {
+          "name": "05. Terminer la consultation (POST /v1/appointments/:id/complete)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/appointments/{{appointment_id}}/complete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "appointments",
+                "{{appointment_id}}",
+                "complete"
+              ]
+            },
+            "description": "Clôture de la séance médicale."
+          }
+        },
+        {
+          "name": "06. Annuler le rendez-vous (POST /v1/appointments/:id/cancel)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Emp\\u00eachement professionnel impr\\u00e9vu\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/appointments/{{appointment_id}}/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "appointments",
+                "{{appointment_id}}",
+                "cancel"
+              ]
+            },
+            "description": "Annulation du rendez-vous avec notification instantanée du praticien."
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Laboratoire d'Analyses Médicales & Biologie Clinique (MOD-13)",
+      "item": [
+        {
+          "name": "01. Lister les prescriptions d'analyses (GET /v1/lab/orders)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{labtech_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/lab/orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "lab",
+                "orders"
+              ]
+            },
+            "description": "Lister les bons d'analyses envoyés au laboratoire de biologie médicale."
+          }
+        },
+        {
+          "name": "02. Prescrire une analyse de laboratoire (POST /v1/lab/orders)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e\",\n  \"priority\": \"URGENT\",\n  \"clinicalIndication\": \"Suspicion de crise palustre et an\\u00e9mie s\\u00e9v\\u00e8re\",\n  \"items\": [\n    {\n      \"testCode\": \"GE-PALU\",\n      \"testName\": \"Goutte \\u00c9paisse / Test Rapide Paludisme\",\n      \"category\": \"PARASITOLOGIE\",\n      \"specimenType\": \"SANG_TOTAL\",\n      \"unit\": \"parasites/uL\",\n      \"referenceRange\": \"N\\u00e9gatif (< 0)\"\n    },\n    {\n      \"testCode\": \"NFS-HB\",\n      \"testName\": \"H\\u00e9moglobine (NFS)\",\n      \"category\": \"HEMATOLOGIE\",\n      \"specimenType\": \"SANG_EDTA\",\n      \"unit\": \"g/dL\",\n      \"referenceRange\": \"12.0 - 16.0\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/lab/orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "lab",
+                "orders"
+              ]
+            },
+            "description": "Prescription d'examens biologiques par le médecin."
+          }
+        },
+        {
+          "name": "03. Prélèvement d'échantillon (POST /v1/lab/orders/:id/collect-sample)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{labtech_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"barcode\": \"SAMPLE-PALU-2026-99\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/lab/orders/{{lab_order_id}}/collect-sample",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "lab",
+                "orders",
+                "{{lab_order_id}}",
+                "collect-sample"
+              ]
+            },
+            "description": "Enregistrement du prélèvement avec code-barres par le technicien ou l'infirmier."
+          }
+        },
+        {
+          "name": "04. Début des analyses paillasse (POST /v1/lab/orders/:id/start-analysis)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{labtech_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/lab/orders/{{lab_order_id}}/start-analysis",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "lab",
+                "orders",
+                "{{lab_order_id}}",
+                "start-analysis"
+              ]
+            },
+            "description": "Passage du bon d'analyse au statut IN_ANALYSIS."
+          }
+        },
+        {
+          "name": "05. Enregistrement des résultats (POST /v1/lab/orders/:id/record-results)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{labtech_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"results\": [\n    {\n      \"id\": \"{{lab_item_id_1}}\",\n      \"resultValue\": \"POSITIF (Plasmodium falciparum +++)\",\n      \"unit\": \"parasites/uL\",\n      \"interpretation\": \"CRITICAL_HIGH\",\n      \"isCritical\": true\n    },\n    {\n      \"id\": \"{{lab_item_id_2}}\",\n      \"resultValue\": \"7.5\",\n      \"unit\": \"g/dL\",\n      \"interpretation\": \"CRITICAL_LOW\",\n      \"isCritical\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/lab/orders/{{lab_order_id}}/record-results",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "lab",
+                "orders",
+                "{{lab_order_id}}",
+                "record-results"
+              ]
+            },
+            "description": "Saisie des résultats d'analyses avec détection des valeurs critiques."
+          }
+        },
+        {
+          "name": "06. Validation biologique des résultats (POST /v1/lab/orders/:id/validate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{labtech_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"R\\u00e9sultats valid\\u00e9s biologiquement. Alerte critique transmise au m\\u00e9decin prescripteur.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/lab/orders/{{lab_order_id}}/validate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "lab",
+                "orders",
+                "{{lab_order_id}}",
+                "validate"
+              ]
+            },
+            "description": "Validation médicale finale déclenchant l'alerte automatique au médecin en cas de valeur critique."
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Surveillance Épidémiologique & Rapports DHIS2 (MOD-14)",
+      "item": [
+        {
+          "name": "01. Lister les déclarations épidémiologiques (GET /v1/epidemiology/cases)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/epidemiology/cases",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "epidemiology",
+                "cases"
+              ]
+            },
+            "description": "Lister les cas de maladies à déclaration obligatoire (MDO)."
+          }
+        },
+        {
+          "name": "02. Déclarer un cas épidémiologique (POST /v1/epidemiology/cases)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"diseaseCode\": \"PALUDISME_GRAVE\",\n  \"diseaseName\": \"Paludisme Grave \\u00e0 Plasmodium Falciparum\",\n  \"patientId\": \"99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e\",\n  \"patientAge\": 28,\n  \"patientGender\": \"M\",\n  \"district\": \"Ouagadougou-Centre\",\n  \"region\": \"Centre\",\n  \"classification\": \"CONFIRMED\",\n  \"outcome\": \"HOSPITALIZED\",\n  \"notes\": \"Cas confirm\\u00e9 par frottis et goutte \\u00e9paisse.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/epidemiology/cases",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "epidemiology",
+                "cases"
+              ]
+            },
+            "description": "Notification d'un cas de maladie à déclaration obligatoire (Paludisme, Choléra, Dengue, Rougeole, Méningite, Fièvre Jaune)."
+          }
+        },
+        {
+          "name": "03. Synthèse épidémiologique & Seuils d'alerte (GET /v1/epidemiology/summary)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superadmin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/epidemiology/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "epidemiology",
+                "summary"
+              ]
+            },
+            "description": "Tableau de bord agrégé par pathologie, taux d'attaque et franchissement des seuils d'alerte et d'épidémie OMS."
+          }
+        },
+        {
+          "name": "04. Export standardisé DHIS2 / OMS (GET /v1/epidemiology/dhis2-export)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superadmin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/epidemiology/dhis2-export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "epidemiology",
+                "dhis2-export"
+              ]
+            },
+            "description": "Exportation des données au format JSON DHIS2 (dataValueSet, orgUnit, period, dataValues) conforme aux directives OMS."
+          }
+        }
+      ]
+    },
+    {
+      "name": "17. Messagerie Sécurisée & Alertes Multi-Entités (MOD-15)",
+      "item": [
+        {
+          "name": "01. Lister les messages reçus (GET /v1/messages)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "messages"
+              ]
+            },
+            "description": "Boîte de réception des messages cliniques sécurisés."
+          }
+        },
+        {
+          "name": "02. Envoyer un message clinique sécurisé (POST /v1/messages)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e\",\n  \"patientId\": \"99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e\",\n  \"subject\": \"Consignes de traitement post-consultation\",\n  \"body\": \"Bonjour M. Kabor\\u00e9, veuillez bien respecter les posologies indiqu\\u00e9es sur votre ordonnance. Prenez vos comprim\\u00e9s pendant les repas.\",\n  \"priority\": \"HIGH\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "messages"
+              ]
+            },
+            "description": "Envoi d'un message sécurisé entre professionnels de santé et patients."
+          }
+        },
+        {
+          "name": "03. Historique d'une conversation (GET /v1/messages/conversations/:peerId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/messages/conversations/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "messages",
+                "conversations",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"
+              ]
+            },
+            "description": "Fil complet d'une conversation bidirectionnelle avec un interlocuteur."
+          }
+        },
+        {
+          "name": "04. Lister les alertes & notifications (GET /v1/notifications)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "notifications"
+              ]
+            },
+            "description": "Centre de notifications de l'utilisateur (alertes labo, rendez-vous, prescriptions, urgences)."
+          }
+        },
+        {
+          "name": "05. Compteur d'alertes non lues (GET /v1/notifications/unread-count)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/notifications/unread-count",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "notifications",
+                "unread-count"
+              ]
+            },
+            "description": "Badge numérique pour affichage dynamique sur l'interface frontend."
+          }
+        },
+        {
+          "name": "06. Marquer une alerte comme lue (POST /v1/notifications/:id/read)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/notifications/{{notification_id}}/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "notifications",
+                "{{notification_id}}",
+                "read"
+              ]
+            },
+            "description": "Acquittement d'une notification."
+          }
+        },
+        {
+          "name": "07. Marquer toutes les alertes comme lues (POST /v1/notifications/mark-all-read)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/notifications/mark-all-read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "notifications",
+                "mark-all-read"
+              ]
+            },
+            "description": "Acquittement global de toutes les notifications non lues."
+          }
+        }
+      ]
     }
   ]
 }

@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -65,6 +66,20 @@ import com.medscan.security.tenant.TenantRegistry;
 import com.medscan.security.tenant.VerifiedTenantIdentity;
 import com.medscan.interop.fhir.FhirConstants;
 import com.medscan.interop.fhir.FhirService;
+import com.medscan.appointment.Appointment;
+import com.medscan.appointment.AppointmentJsonMapper;
+import com.medscan.appointment.AppointmentService;
+import com.medscan.lab.LabJsonMapper;
+import com.medscan.lab.LabOrder;
+import com.medscan.lab.LabResultItem;
+import com.medscan.lab.LabService;
+import com.medscan.epidemiology.EpidemiologicalCase;
+import com.medscan.epidemiology.EpidemiologyJsonMapper;
+import com.medscan.epidemiology.EpidemiologyService;
+import com.medscan.messaging.ClinicalMessage;
+import com.medscan.messaging.InAppNotification;
+import com.medscan.messaging.MessagingJsonMapper;
+import com.medscan.messaging.MessagingNotificationService;
 import com.medscan.sync.EmergencyCard;
 import com.medscan.sync.SyncBatchRequest;
 import com.medscan.sync.SyncBatchResponse;
@@ -99,6 +114,10 @@ public class MedscanServer {
     private final DashboardService dashboardService;
     private final SyncService syncService;
     private final FhirService fhirService;
+    private final AppointmentService appointmentService;
+    private final LabService labService;
+    private final EpidemiologyService epidemiologyService;
+    private final MessagingNotificationService messagingNotificationService;
 
     public MedscanServer(int port) {
         this.port = port;
@@ -114,6 +133,26 @@ public class MedscanServer {
         this.dashboardService = new DashboardService(clinicalService, imagingService, tenantRegistry, deliveryService);
         this.syncService = new SyncService(clinicalService);
         this.fhirService = new FhirService(clinicalService);
+        this.appointmentService = new AppointmentService(clinicalService);
+        this.labService = new LabService(clinicalService);
+        this.epidemiologyService = new EpidemiologyService(clinicalService);
+        this.messagingNotificationService = new MessagingNotificationService(clinicalService);
+    }
+
+    public AppointmentService getAppointmentService() {
+        return appointmentService;
+    }
+
+    public LabService getLabService() {
+        return labService;
+    }
+
+    public EpidemiologyService getEpidemiologyService() {
+        return epidemiologyService;
+    }
+
+    public MessagingNotificationService getMessagingNotificationService() {
+        return messagingNotificationService;
     }
 
     public DeliveryService getDeliveryService() {
@@ -298,6 +337,40 @@ public class MedscanServer {
                     handleFhirMedicationRequestGet(exchange, subPath.substring("/fhir/r4/MedicationRequest/".length()));
                 } else if (subPath.equals("/fhir/r4/Bundle") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handleFhirBundleGet(exchange);
+                } else if (subPath.equals("/v1/appointments") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListAppointments(exchange);
+                } else if (subPath.equals("/v1/appointments") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleCreateAppointment(exchange);
+                } else if (subPath.startsWith("/v1/appointments/")) {
+                    handleAppointmentAction(exchange, subPath.substring("/v1/appointments/".length()));
+                } else if (subPath.equals("/v1/lab/orders") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListLabOrders(exchange);
+                } else if (subPath.equals("/v1/lab/orders") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleCreateLabOrder(exchange);
+                } else if (subPath.startsWith("/v1/lab/orders/")) {
+                    handleLabOrderAction(exchange, subPath.substring("/v1/lab/orders/".length()));
+                } else if (subPath.equals("/v1/epidemiology/cases") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListEpidemiologyCases(exchange);
+                } else if (subPath.equals("/v1/epidemiology/cases") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleReportEpidemiologyCase(exchange);
+                } else if (subPath.equals("/v1/epidemiology/summary") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleEpidemiologySummary(exchange);
+                } else if (subPath.equals("/v1/epidemiology/dhis2-export") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleEpidemiologyDhis2Export(exchange);
+                } else if (subPath.equals("/v1/messages") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListMessages(exchange);
+                } else if (subPath.equals("/v1/messages") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleSendMessage(exchange);
+                } else if (subPath.startsWith("/v1/messages/conversation/")) {
+                    handleConversationMessages(exchange, subPath.substring("/v1/messages/conversation/".length()));
+                } else if (subPath.equals("/v1/notifications") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListNotifications(exchange);
+                } else if (subPath.equals("/v1/notifications/unread-count") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleNotificationUnreadCount(exchange);
+                } else if (subPath.equals("/v1/notifications/mark-all-read") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleNotificationMarkAllRead(exchange);
+                } else if (subPath.startsWith("/v1/notifications/")) {
+                    handleNotificationAction(exchange, subPath.substring("/v1/notifications/".length()));
                 } else {
                     sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Point d'accès introuvable: " + subPath + "\"}");
                 }
@@ -1869,6 +1942,531 @@ public class MedscanServer {
                 sendFhirJson(exchange, 404, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"not-found\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
             } catch (Exception e) {
                 sendFhirJson(exchange, 500, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"exception\",\"diagnostics\":\"" + JsonHelper.escape(e.getMessage()) + "\"}]}");
+            }
+        }
+
+        // ==========================================
+        // RENDEZ-VOUS & TÉLÉCONSULTATION (MOD-12)
+        // ==========================================
+
+        private void handleListAppointments(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            String patientParam = null;
+            String practitionerParam = null;
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2) {
+                        if ("patientId".equalsIgnoreCase(kv[0].trim()) || "patient".equalsIgnoreCase(kv[0].trim())) {
+                            patientParam = kv[1].trim();
+                        } else if ("practitionerId".equalsIgnoreCase(kv[0].trim()) || "practitioner".equalsIgnoreCase(kv[0].trim())) {
+                            practitionerParam = kv[1].trim();
+                        }
+                    }
+                }
+            }
+
+            List<Appointment> list;
+            if (patientParam != null) {
+                try {
+                    list = appointmentService.listAppointmentsForPatient(UUID.fromString(patientParam));
+                } catch (IllegalArgumentException e) {
+                    list = Collections.emptyList();
+                }
+            } else if (practitionerParam != null) {
+                try {
+                    list = appointmentService.listAppointmentsForPractitioner(UUID.fromString(practitionerParam));
+                } catch (IllegalArgumentException e) {
+                    list = Collections.emptyList();
+                }
+            } else if (principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                list = pOpt.isPresent() ? appointmentService.listAppointmentsForPatient(pOpt.get().id()) : Collections.emptyList();
+            } else {
+                list = appointmentService.listAllAppointments(principal.getTenantId());
+            }
+
+            sendJson(exchange, 200, AppointmentJsonMapper.toJsonList(list));
+        }
+
+        private void handleCreateAppointment(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String patientIdStr = JsonHelper.getString(body, "patientId");
+            String practitionerIdStr = JsonHelper.getString(body, "practitionerId");
+            String practitionerName = JsonHelper.getString(body, "practitionerName");
+            String practitionerRole = JsonHelper.getString(body, "practitionerRole");
+            String appointmentType = JsonHelper.getString(body, "appointmentType");
+            String scheduledAtStr = JsonHelper.getString(body, "scheduledAt");
+            String durationMinutesStr = JsonHelper.getString(body, "durationMinutes");
+            String reason = JsonHelper.getString(body, "reason");
+
+            UUID patientId = null;
+            if (patientIdStr != null && !patientIdStr.isBlank()) {
+                patientId = UUID.fromString(patientIdStr);
+            } else if (principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (pOpt.isPresent()) patientId = pOpt.get().id();
+            }
+
+            if (patientId == null) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"L'identifiant du patient est requis.\"}");
+                return;
+            }
+
+            UUID practitionerId = (practitionerIdStr != null && !practitionerIdStr.isBlank()) ? UUID.fromString(practitionerIdStr) : principal.getUserId();
+            Instant scheduledAt = (scheduledAtStr != null && !scheduledAtStr.isBlank()) ? Instant.parse(scheduledAtStr) : Instant.now().plusSeconds(86400);
+            int durationMinutes = 30;
+            if (durationMinutesStr != null && !durationMinutesStr.isBlank()) {
+                try { durationMinutes = Integer.parseInt(durationMinutesStr); } catch (NumberFormatException ignored) {}
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                Appointment appt = appointmentService.bookAppointment(
+                        patientId, practitionerId, practitionerName, practitionerRole,
+                        appointmentType, scheduledAt, durationMinutes, reason,
+                        principal.getUserId(), principal.getName(), role, principal.getTenantId()
+                );
+                sendJson(exchange, 201, AppointmentJsonMapper.toJson(appt));
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleAppointmentAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+            String role = principal.getRoles().isEmpty() ? "USER" : principal.getRoles().iterator().next();
+
+            String cleanTail = tail.startsWith("/") ? tail.substring(1) : tail;
+
+            try {
+                if (cleanTail.contains("/confirm") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/confirm")));
+                    Appointment appt = appointmentService.confirmAppointment(id, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, AppointmentJsonMapper.toJson(appt));
+                } else if (cleanTail.contains("/cancel") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/cancel")));
+                    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    String reason = JsonHelper.getString(body, "reason");
+                    Appointment appt = appointmentService.cancelAppointment(id, reason != null ? reason : "Annulé par l'utilisateur", principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, AppointmentJsonMapper.toJson(appt));
+                } else if (cleanTail.contains("/complete") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/complete")));
+                    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    String notes = JsonHelper.getString(body, "notes");
+                    Appointment appt = appointmentService.completeAppointment(id, notes, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, AppointmentJsonMapper.toJson(appt));
+                } else if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    UUID id = UUID.fromString(cleanTail);
+                    Optional<Appointment> opt = appointmentService.findAppointmentById(id);
+                    if (opt.isPresent()) {
+                        sendJson(exchange, 200, AppointmentJsonMapper.toJson(opt.get()));
+                    } else {
+                        sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Rendez-vous introuvable.\"}");
+                    }
+                } else {
+                    sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode non supportée.\"}");
+                }
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        // ==========================================
+        // LABORATOIRE D'ANALYSES MÉDICALES (MOD-13)
+        // ==========================================
+
+        private void handleListLabOrders(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            String patientParam = null;
+            boolean pendingOnly = false;
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2) {
+                        if ("patientId".equalsIgnoreCase(kv[0].trim()) || "patient".equalsIgnoreCase(kv[0].trim())) {
+                            patientParam = kv[1].trim();
+                        } else if ("pending".equalsIgnoreCase(kv[0].trim())) {
+                            pendingOnly = "true".equalsIgnoreCase(kv[1].trim());
+                        }
+                    }
+                }
+            }
+
+            List<LabOrder> orders;
+            if (patientParam != null) {
+                try {
+                    orders = labService.listOrdersForPatient(UUID.fromString(patientParam));
+                } catch (IllegalArgumentException e) {
+                    orders = Collections.emptyList();
+                }
+            } else if (pendingOnly) {
+                orders = labService.listPendingOrders(principal.getTenantId());
+            } else {
+                orders = labService.listAllOrders(principal.getTenantId());
+            }
+
+            sendJson(exchange, 200, LabJsonMapper.ordersListToJson(orders));
+        }
+
+        private void handleCreateLabOrder(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("DOCTOR") && !principal.isUserInRole("ADMIN") && !principal.isUserInRole("SUPER_ADMIN")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Interdit\",\"status\":403,\"detail\":\"Seul un médecin peut prescrire une analyse biologique.\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String patientIdStr = JsonHelper.getString(body, "patientId");
+            String testCategory = JsonHelper.getString(body, "testCategory");
+            String testName = JsonHelper.getString(body, "testName");
+            String priority = JsonHelper.getString(body, "priority");
+            String clinicalIndication = JsonHelper.getString(body, "clinicalIndication");
+
+            if (patientIdStr == null || testName == null) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"patientId et testName sont requis.\"}");
+                return;
+            }
+
+            try {
+                LabOrder order = labService.createLabOrder(
+                        UUID.fromString(patientIdStr), testCategory, testName, priority,
+                        clinicalIndication, principal.getUserId(), principal.getName(), principal.getTenantId()
+                );
+                sendJson(exchange, 201, LabJsonMapper.orderToJson(order));
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleLabOrderAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+            String role = principal.getRoles().isEmpty() ? "USER" : principal.getRoles().iterator().next();
+
+            String cleanTail = tail.startsWith("/") ? tail.substring(1) : tail;
+
+            try {
+                if (cleanTail.contains("/collect-sample") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/collect-sample")));
+                    LabOrder order = labService.collectSample(id, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, LabJsonMapper.orderToJson(order));
+                } else if (cleanTail.contains("/validate-results") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    if (!principal.isUserInRole("LAB_TECHNICIAN") && !principal.isUserInRole("DOCTOR") && !principal.isUserInRole("ADMIN") && !principal.isUserInRole("SUPER_ADMIN")) {
+                        sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Interdit\",\"status\":403,\"detail\":\"Seul un technicien de laboratoire ou médecin peut valider les résultats.\"}");
+                        return;
+                    }
+                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/validate-results")));
+                    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+                    List<LabResultItem> results = new ArrayList<>();
+                    String paramCode = JsonHelper.getString(body, "paramCode");
+                    String paramName = JsonHelper.getString(body, "paramName");
+                    String textValue = JsonHelper.getString(body, "textValue");
+                    String numericValueStr = JsonHelper.getString(body, "numericValue");
+                    String unit = JsonHelper.getString(body, "unit");
+                    String loinc = JsonHelper.getString(body, "loincCode");
+
+                    if (paramCode != null) {
+                        Double numVal = (numericValueStr != null) ? Double.parseDouble(numericValueStr) : null;
+                        if (numVal != null) {
+                            results.add(LabResultItem.ofNumeric(paramCode, paramName != null ? paramName : paramCode, loinc, numVal, unit, null, null, null, null, "Résultat saisi"));
+                        } else {
+                            results.add(LabResultItem.ofText(paramCode, paramName != null ? paramName : paramCode, loinc, textValue, false, false, "Résultat saisi"));
+                        }
+                    } else {
+                        results.add(LabResultItem.ofText("ANALYSIS_COMPLETE", "Compte-rendu d'analyse", "unknown", "Analyses conformes", false, false, "Validation technique"));
+                    }
+
+                    LabOrder validated = labService.validateResults(id, principal.getUserId(), principal.getName(), results, principal.getTenantId());
+
+                    if (validated.hasCriticalAlert()) {
+                        messagingNotificationService.dispatchNotification(
+                                validated.prescriberId(),
+                                "DOCTOR",
+                                "CRITICAL_LAB_ALERT",
+                                "CRITICAL",
+                                "Résultat d'analyse critique pour " + validated.patientName(),
+                                "L'analyse " + validated.orderCode() + " présente des valeurs critiques nécessitant une prise en charge rapide.",
+                                "LabOrder",
+                                validated.orderCode(),
+                                principal.getTenantId()
+                        );
+                    }
+
+                    sendJson(exchange, 200, LabJsonMapper.orderToJson(validated));
+                } else if (cleanTail.contains("/fhir") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    String idOrCode = cleanTail.substring(0, cleanTail.indexOf("/fhir"));
+                    Optional<LabOrder> opt = labService.findByCode(idOrCode);
+                    if (opt.isEmpty()) {
+                        try { opt = labService.findById(UUID.fromString(idOrCode)); } catch (IllegalArgumentException ignored) {}
+                    }
+                    if (opt.isPresent()) {
+                        String fhirBundle = labService.toFhirLaboratoryBundle(opt.get(), getFhirBaseUrl(exchange));
+                        sendFhirJson(exchange, 200, fhirBundle);
+                    } else {
+                        sendFhirJson(exchange, 404, "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"not-found\",\"diagnostics\":\"Analyse introuvable.\"}]}");
+                    }
+                } else if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    Optional<LabOrder> opt = labService.findByCode(cleanTail);
+                    if (opt.isEmpty()) {
+                        try { opt = labService.findById(UUID.fromString(cleanTail)); } catch (IllegalArgumentException ignored) {}
+                    }
+                    if (opt.isPresent()) {
+                        sendJson(exchange, 200, LabJsonMapper.orderToJson(opt.get()));
+                    } else {
+                        sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Analyse introuvable.\"}");
+                    }
+                } else {
+                    sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode non supportée.\"}");
+                }
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        // ==========================================
+        // SURVEILLANCE ÉPIDÉMIOLOGIQUE & DHIS2 (MOD-14)
+        // ==========================================
+
+        private void handleListEpidemiologyCases(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            String diseaseCode = null;
+            String region = null;
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2) {
+                        if ("diseaseCode".equalsIgnoreCase(kv[0].trim()) || "disease".equalsIgnoreCase(kv[0].trim())) {
+                            diseaseCode = kv[1].trim();
+                        } else if ("region".equalsIgnoreCase(kv[0].trim())) {
+                            region = kv[1].trim();
+                        }
+                    }
+                }
+            }
+
+            List<EpidemiologicalCase> cases = epidemiologyService.listCases(principal.getTenantId(), diseaseCode, region);
+            sendJson(exchange, 200, EpidemiologyJsonMapper.casesListToJson(cases));
+        }
+
+        private void handleReportEpidemiologyCase(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String region = JsonHelper.getString(body, "region");
+            String district = JsonHelper.getString(body, "district");
+            String diseaseCode = JsonHelper.getString(body, "diseaseCode");
+            String diseaseName = JsonHelper.getString(body, "diseaseName");
+            String detectionSource = JsonHelper.getString(body, "detectionSource");
+            String patientAgeStr = JsonHelper.getString(body, "patientAge");
+            String patientGender = JsonHelper.getString(body, "patientGender");
+            String outcome = JsonHelper.getString(body, "outcome");
+
+            int age = 30;
+            if (patientAgeStr != null) {
+                try { age = Integer.parseInt(patientAgeStr); } catch (NumberFormatException ignored) {}
+            }
+
+            String role = principal.getRoles().isEmpty() ? "DOCTOR" : principal.getRoles().iterator().next();
+
+            try {
+                EpidemiologicalCase c = epidemiologyService.reportCase(
+                        principal.getTenantId(), region, district, diseaseCode, diseaseName,
+                        detectionSource, age, patientGender, outcome,
+                        principal.getUserId(), principal.getName(), role
+                );
+                sendJson(exchange, 201, EpidemiologyJsonMapper.caseToJson(c));
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleEpidemiologySummary(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            Map<String, Object> summary = epidemiologyService.getEpidemiologicalSummary(principal.getTenantId());
+            sendJson(exchange, 200, EpidemiologyJsonMapper.summaryToJson(summary));
+        }
+
+        private void handleEpidemiologyDhis2Export(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            String period = "2026W42";
+            String orgUnit = "ou-bfa-centre-01";
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2) {
+                        if ("period".equalsIgnoreCase(kv[0].trim())) period = kv[1].trim();
+                        else if ("orgUnit".equalsIgnoreCase(kv[0].trim())) orgUnit = kv[1].trim();
+                    }
+                }
+            }
+
+            String dhis2Json = epidemiologyService.exportDhis2DataValueSet(period, orgUnit);
+            sendJson(exchange, 200, dhis2Json);
+        }
+
+        // ==========================================
+        // MESSAGERIE SÉCURISÉE (MOD-15)
+        // ==========================================
+
+        private void handleListMessages(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            List<ClinicalMessage> messages = messagingNotificationService.listUserMessages(principal.getUserId());
+            sendJson(exchange, 200, MessagingJsonMapper.messagesListToJson(messages));
+        }
+
+        private void handleSendMessage(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String convIdStr = JsonHelper.getString(body, "conversationId");
+            String recipientIdStr = JsonHelper.getString(body, "recipientId");
+            String recipientName = JsonHelper.getString(body, "recipientName");
+            String recipientRole = JsonHelper.getString(body, "recipientRole");
+            String patientIdStr = JsonHelper.getString(body, "patientId");
+            String subject = JsonHelper.getString(body, "subject");
+            String content = JsonHelper.getString(body, "content");
+            String priority = JsonHelper.getString(body, "priority");
+
+            if (recipientIdStr == null || content == null) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"recipientId et content sont requis.\"}");
+                return;
+            }
+
+            UUID convId = (convIdStr != null && !convIdStr.isBlank()) ? UUID.fromString(convIdStr) : null;
+            UUID recipientId = UUID.fromString(recipientIdStr);
+            UUID patientId = (patientIdStr != null && !patientIdStr.isBlank()) ? UUID.fromString(patientIdStr) : null;
+            String senderRole = principal.getRoles().isEmpty() ? "USER" : principal.getRoles().iterator().next();
+
+            try {
+                ClinicalMessage message = messagingNotificationService.sendMessage(
+                        convId, principal.getUserId(), principal.getName(), senderRole,
+                        recipientId, recipientName, recipientRole, patientId,
+                        subject, content, priority, principal.getTenantId()
+                );
+                sendJson(exchange, 201, MessagingJsonMapper.messageToJson(message));
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleConversationMessages(HttpExchange exchange, String conversationIdStr) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+
+            try {
+                UUID convId = UUID.fromString(conversationIdStr.trim());
+                List<ClinicalMessage> messages = messagingNotificationService.listMessagesInConversation(convId);
+                sendJson(exchange, 200, MessagingJsonMapper.messagesListToJson(messages));
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID de conversation invalide.\"}");
+            }
+        }
+
+        // ==========================================
+        // NOTIFICATIONS & ALERTES MULTI-ENTITÉS (MOD-15)
+        // ==========================================
+
+        private void handleListNotifications(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            boolean unreadOnly = false;
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2 && "unreadOnly".equalsIgnoreCase(kv[0].trim())) {
+                        unreadOnly = "true".equalsIgnoreCase(kv[1].trim());
+                    }
+                }
+            }
+
+            List<InAppNotification> notifs = messagingNotificationService.listNotificationsForUser(principal.getUserId(), unreadOnly);
+            sendJson(exchange, 200, MessagingJsonMapper.notificationsListToJson(notifs));
+        }
+
+        private void handleNotificationUnreadCount(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            int count = messagingNotificationService.getUnreadNotificationCount(principal.getUserId());
+            sendJson(exchange, 200, "{\"unreadCount\":" + count + "}");
+        }
+
+        private void handleNotificationMarkAllRead(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            int marked = messagingNotificationService.markAllNotificationsAsRead(principal.getUserId());
+            sendJson(exchange, 200, "{\"markedCount\":" + marked + "}");
+        }
+
+        private void handleNotificationAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String cleanTail = tail.startsWith("/") ? tail.substring(1) : tail;
+
+            if (cleanTail.contains("/read") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                try {
+                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/read")));
+                    Optional<InAppNotification> opt = messagingNotificationService.markNotificationAsRead(id, principal.getUserId());
+                    if (opt.isPresent()) {
+                        sendJson(exchange, 200, MessagingJsonMapper.notificationToJson(opt.get()));
+                    } else {
+                        sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Notification introuvable.\"}");
+                    }
+                } catch (IllegalArgumentException e) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID invalide.\"}");
+                }
+            } else {
+                sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode non supportée.\"}");
             }
         }
 

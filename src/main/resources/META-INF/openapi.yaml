@@ -1116,6 +1116,461 @@ paths:
         '404':
           description: Patient introuvable
 
+  /v1/appointments:
+    get:
+      summary: Lister les rendez-vous et séances de téléconsultation
+      operationId: listAppointments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: practitionerId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Liste ordonnée chronologiquement des rendez-vous
+          content:
+            application/json:
+              schema:
+                type: array
+    post:
+      summary: Planifier un nouveau rendez-vous (présentiel ou téléconsultation avec lien Jitsi)
+      operationId: createAppointment
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patientId]
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                practitionerId:
+                  type: string
+                  format: uuid
+                practitionerName:
+                  type: string
+                practitionerRole:
+                  type: string
+                  enum: [DOCTOR, LAB_TECHNICIAN, RADIOLOGIST, NURSE]
+                appointmentType:
+                  type: string
+                  enum: [IN_PERSON, TELECONSULTATION, LAB_ANALYSIS, IMAGING, NURSING]
+                scheduledAt:
+                  type: string
+                  format: date-time
+                durationMinutes:
+                  type: integer
+                reason:
+                  type: string
+      responses:
+        '201':
+          description: Rendez-vous planifié avec succès
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /v1/appointments/{id}/confirm:
+    post:
+      summary: Confirmer un rendez-vous planifié
+      operationId: confirmAppointment
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Rendez-vous confirmé
+
+  /v1/appointments/{id}/cancel:
+    post:
+      summary: Annuler un rendez-vous avec motif
+      operationId: cancelAppointment
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Rendez-vous annulé
+
+  /v1/appointments/{id}/complete:
+    post:
+      summary: Clôturer un rendez-vous honoré avec notes cliniques
+      operationId: completeAppointment
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Rendez-vous clôturé
+
+  /v1/lab/orders:
+    get:
+      summary: Lister les prescriptions et analyses de biologie médicale
+      operationId: listLabOrders
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: pending
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Liste des analyses biologiques
+    post:
+      summary: Prescrire une analyse biologique médicale (Réservé Médecin)
+      operationId: createLabOrder
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patientId, testName]
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                testCategory:
+                  type: string
+                  enum: [HEMATOLOGY, PARASITOLOGY, BIOCHEMISTRY, IMMUNOLOGY, URINARY]
+                testName:
+                  type: string
+                priority:
+                  type: string
+                  enum: [ROUTINE, URGENT, STAT]
+                clinicalIndication:
+                  type: string
+      responses:
+        '201':
+          description: Analyse biologique prescrite
+
+  /v1/lab/orders/{id}/collect-sample:
+    post:
+      summary: Enregistrer le prélèvement de l'échantillon biologique
+      operationId: collectLabSample
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Statut mis à jour à SAMPLE_COLLECTED
+
+  /v1/lab/orders/{id}/validate-results:
+    post:
+      summary: Valider et publier les résultats d'analyses (Technicien Labo / Médecin)
+      operationId: validateLabResults
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Résultats enregistrés et validés
+
+  /v1/lab/orders/{id}/fhir:
+    get:
+      summary: Exporter l'analyse au format standard HL7 FHIR R4 Laboratory Observation
+      operationId: exportLabOrderFhir
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Bundle FHIR d'observations biologiques codifiées LOINC
+          content:
+            application/fhir+json:
+              schema:
+                type: object
+
+  /v1/epidemiology/cases:
+    get:
+      summary: Lister les cas épidémiologiques sous surveillance (Paludisme, Dengue, Rougeole, etc.)
+      operationId: listEpidemiologyCases
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: diseaseCode
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: region
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Liste des cas déclarés
+    post:
+      summary: Déclaration obligatoire d'un cas épidémiologique
+      operationId: reportEpidemiologyCase
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [region, district, diseaseCode]
+              properties:
+                region:
+                  type: string
+                district:
+                  type: string
+                diseaseCode:
+                  type: string
+                diseaseName:
+                  type: string
+                detectionSource:
+                  type: string
+                patientAge:
+                  type: integer
+                patientGender:
+                  type: string
+                outcome:
+                  type: string
+      responses:
+        '201':
+          description: Cas épidémiologique enregistré
+
+  /v1/epidemiology/summary:
+    get:
+      summary: Tableau de bord et synthèse épidémiologique régionale avec alertes de seuils
+      operationId: getEpidemiologySummary
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Métriques régionales et alertes épidémiques actives
+
+  /v1/epidemiology/dhis2-export:
+    get:
+      summary: Exportation conforme au standard international DHIS2 DataValueSet JSON
+      operationId: exportDhis2Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 2026W42
+        - name: orgUnit
+          in: query
+          required: false
+          schema:
+            type: string
+            example: ou-bfa-centre-01
+      responses:
+        '200':
+          description: Fichier DataValueSet DHIS2
+
+  /v1/messages:
+    get:
+      summary: Lister les messages sécurisés reçus et émis par l'utilisateur connecté
+      operationId: listMessages
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Liste des messages
+    post:
+      summary: Envoyer un message clinique sécurisé (auto-notifie le destinataire)
+      operationId: sendMessage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipientId, content]
+              properties:
+                conversationId:
+                  type: string
+                  format: uuid
+                recipientId:
+                  type: string
+                  format: uuid
+                recipientName:
+                  type: string
+                recipientRole:
+                  type: string
+                patientId:
+                  type: string
+                  format: uuid
+                subject:
+                  type: string
+                content:
+                  type: string
+                priority:
+                  type: string
+                  enum: [ROUTINE, URGENT, EMERGENCY]
+      responses:
+        '201':
+          description: Message envoyé et notification générée
+
+  /v1/messages/conversation/{conversationId}:
+    get:
+      summary: Récupérer l'historique complet d'une conversation clinique
+      operationId: getConversationMessages
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Fil de discussion ordonné
+
+  /v1/notifications:
+    get:
+      summary: Récupérer les alertes et notifications multi-entités de l'utilisateur
+      operationId: listNotifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: unreadOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Liste des alertes et notifications
+
+  /v1/notifications/unread-count:
+    get:
+      summary: Obtenir le nombre de notifications non lues (Badge UI)
+      operationId: getUnreadNotificationCount
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Nombre d'alertes non lues
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unreadCount:
+                    type: integer
+
+  /v1/notifications/mark-all-read:
+    post:
+      summary: Marquer toutes les notifications comme lues
+      operationId: markAllNotificationsRead
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Toutes les notifications marquées comme lues
+
+  /v1/notifications/{id}/read:
+    post:
+      summary: Marquer une notification spécifique comme lue
+      operationId: markNotificationRead
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notification marquée comme lue
+
 components:
   securitySchemes:
     BearerAuth:

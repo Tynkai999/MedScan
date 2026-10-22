@@ -1019,6 +1019,129 @@ MIME Types supportés : `application/fhir+json` et `application/json`.
 - **Chemin** : `/fhir/r4/Bundle?patient={patientId}`
 - **Description** : Exporte l'intégralité du dossier (Patient, toutes les Observations vitales LOINC, toutes les prescriptions) dans un Bundle standard pour interopérabilité hospitalière (OpenMRS, DHIS2, ministères de la santé).
 
+### 4.18 Module MOD-12 : Rendez-vous Médicaux & Télé-consultation Audio/Vidéo
+
+Gère l'ensemble du cycle de prise de rendez-vous pour tous les praticiens de santé (Médecin, Infirmier, Technicien de laboratoire, Radiologue) et la télé-consultation sécurisée intégrée.
+
+#### 4.18.1 Planification d'un Rendez-vous (Présentiel ou Téléconsultation)
+- **Méthode** : `POST`
+- **Chemin** : `/v1/appointments`
+- **Permissions** : Patient ou Praticien connecté
+- **Exemple de Corps de Requête** :
+```json
+{
+  "patientId": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+  "practitionerId": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
+  "practitionerName": "Dr. Seydou Traore",
+  "practitionerRole": "DOCTOR",
+  "appointmentType": "TELECONSULTATION",
+  "scheduledAt": "2026-10-25T09:30:00Z",
+  "durationMinutes": 30,
+  "reason": "Consultation vidéo de suivi allergologique"
+}
+```
+- **Réponse Succès (201 Created)** : Objet `Appointment` contenant `teleconsultationJoinUrl` (lien sécurisé WebRTC/Jitsi sans pré-enregistrement) si le type est `TELECONSULTATION`.
+
+#### 4.18.2 Consultation et Actions sur Rendez-vous
+- `GET /v1/appointments?patientId={id}` : Liste des rendez-vous d'un patient.
+- `GET /v1/appointments?practitionerId={id}` : Agenda d'un praticien de santé.
+- `POST /v1/appointments/{id}/confirm` : Confirmation par le praticien ou l'accueil.
+- `POST /v1/appointments/{id}/cancel` : Annulation avec motif obligatoire (`{ "reason": "..." }`).
+- `POST /v1/appointments/{id}/complete` : Clôture avec notes cliniques (`{ "notes": "..." }`).
+
+---
+
+### 4.19 Module MOD-13 : Laboratoire d'Analyses Médicales & Biologie Clinique
+
+Assure la prise en charge complète des examens de biologie médicale par les techniciens de laboratoire (`LAB_TECHNICIAN`) et les médecins prescripteurs (`DOCTOR`).
+
+#### 4.19.1 Prescription d'Analyse Biologique (DOCTOR)
+- **Méthode** : `POST`
+- **Chemin** : `/v1/lab/orders`
+- **Exemple de Corps de Requête** :
+```json
+{
+  "patientId": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+  "testCategory": "PARASITOLOGY",
+  "testName": "Goutte Épaisse & Test Rapide Paludisme (TDR)",
+  "priority": "URGENT",
+  "clinicalIndication": "Fièvre aiguë 39.5°C et frissons intenses"
+}
+```
+
+#### 4.19.2 Prélèvement & Validation Officielle des Résultats (LAB_TECHNICIAN)
+- `POST /v1/lab/orders/{id}/collect-sample` : Prélèvement de l'échantillon biologique.
+- `POST /v1/lab/orders/{id}/validate-results` : Saisie des résultats d'analyses avec valeurs numériques, unités, intervalles de référence et détection automatique des alertes critiques :
+```json
+{
+  "paramCode": "PLASMODIUM_FALCIPARUM",
+  "paramName": "Recherche Plasmodium Falciparum",
+  "loincCode": "50311-0",
+  "textValue": "POSITIF (12 500 trophozoïtes/µL)",
+  "unit": "trophozoïtes/µL"
+}
+```
+*Si un résultat franchit le seuil critique (ex: anémie sévère ou paludisme positif), le système génère immédiatement une notification critique `CRITICAL_LAB_ALERT` au médecin traitant.*
+
+#### 4.19.3 Exportation HL7 FHIR R4 Laboratory Observation
+- **Méthode** : `GET`
+- **Chemin** : `/v1/lab/orders/{id}/fhir`
+- **Réponse** : Bundle FHIR R4 standard contenant les Observations de laboratoire codifiées LOINC.
+
+---
+
+### 4.20 Module MOD-14 : Surveillance Épidémiologique & Rapports Nationaux (DHIS2 / OMS)
+
+Plateforme de veille sanitaire permettant aux praticiens de déclarer les maladies à déclaration obligatoire et d'alimenter les systèmes nationaux (DHIS2, OMS).
+
+#### 4.20.1 Déclaration d'un Cas Épidémiologique
+- **Méthode** : `POST`
+- **Chemin** : `/v1/epidemiology/cases`
+- **Exemple** :
+```json
+{
+  "region": "Centre",
+  "district": "Baskuy",
+  "diseaseCode": "MALARIA_FALCIPARUM",
+  "diseaseName": "Paludisme à Plasmodium falciparum",
+  "detectionSource": "LAB_CONFIRMED",
+  "patientAge": 28,
+  "patientGender": "F",
+  "outcome": "UNDER_TREATMENT"
+}
+```
+
+#### 4.20.2 Tableau de Bord Épidémiologique & Alertes de Seuils
+- `GET /v1/epidemiology/summary` : Agrégats par maladie, région, statut et détection automatique des dépassements de seuils épidémiques d'alerte.
+- `GET /v1/epidemiology/dhis2-export?period=2026W42&orgUnit=ou-bfa-centre-01` : Exportation directe au format JSON DataValueSet DHIS2 pour transmission au Ministère de la Santé.
+
+---
+
+### 4.21 Module MOD-15 : Messagerie Sécurisée & Alertes Multi-Entités en Temps Réel
+
+Offre un canal de communication chiffré et un moteur de notifications d'alertes pour toutes les entités de l'application (Patient, Médecin, Pharmacien, Laboratoire, Livreur, Admin).
+
+#### 4.21.1 Messagerie Sécurisée
+- `GET /v1/messages` : Liste des messages de l'utilisateur connecté.
+- `GET /v1/messages/conversation/{conversationId}` : Fil de discussion chronologique.
+- `POST /v1/messages` : Envoi d'un message direct (déclenche automatiquement une notification au destinataire) :
+```json
+{
+  "recipientId": "116286b8-79e3-48b6-b99e-06fed5f10ee4",
+  "recipientName": "Fatou Ouedraogo",
+  "recipientRole": "PATIENT",
+  "subject": "Consignes de traitement",
+  "content": "Vos analyses confirment le diagnostic. Démarrez le traitement ce soir.",
+  "priority": "URGENT"
+}
+```
+
+#### 4.21.2 Alertes & Notifications Multi-Entités
+- `GET /v1/notifications` : Liste des alertes (`unreadOnly=true` pour n'afficher que les alertes actives).
+- `GET /v1/notifications/unread-count` : Badge compteur non lu (ex: `{ "unreadCount": 3 }`).
+- `POST /v1/notifications/{id}/read` : Marquer une alerte comme lue.
+- `POST /v1/notifications/mark-all-read` : Tout marquer comme lu.
+
 ---
 
 ## 5. Modèle Standardisé des Erreurs (RFC 7807 Problem Details)

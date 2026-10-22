@@ -5,8 +5,8 @@
 **Version du système** : `0.1.0-SNAPSHOT` (Architecture Validée & Déployée)  
 **Environnement de production actif** : [`https://medscan-sluw.onrender.com/medscan/api`](https://medscan-sluw.onrender.com/medscan/api)  
 **Dépôt officiel** : [`https://github.com/Tynkai999/MedScan.git`](https://github.com/Tynkai999/MedScan.git) (Branche `main`)  
-**Statut global de la suite de tests** : **107 tests passants (100% au vert)**  
-**Nouveautés Récentes** : Hub d'Interopérabilité Internationale HL7 FHIR R4 (MOD-07), Synchronisation Hors-Ligne & Idempotence (MOD-10), Logistique & Remise Sécurisée OTP (MOD-09).
+**Statut global de la suite de tests** : **121 tests passants (100% au vert)**  
+**Nouveautés Récentes** : Rendez-vous & Téléconsultation WebRTC (MOD-12), Laboratoire d'Analyses Médicales (MOD-13), Surveillance Épidémiologique DHIS2/OMS (MOD-14), Messagerie & Alertes Multi-Entités (MOD-15).
 
 ---
 
@@ -77,6 +77,10 @@ Ce document fournit à l'agent IA (qu'il soit chargé de la modélisation Machin
 | **MOD-09** | Delivery Sécurisée & Remise par Code OTP | **100% Terminé** | 5 tests unitaires & intégration | **En Ligne** |
 | **MOD-10** | Synchronisation Hors-Ligne & Delta-Sync | **100% Terminé** | 7 tests unitaires & intégration | **En Ligne** |
 | **MOD-11** | Journal d'Audit Immuable DPO & Conformité | **100% Terminé** | Validé en intégration | **En Ligne** |
+| **MOD-12** | Rendez-vous Médicaux & Télé-consultation WebRTC | **100% Terminé** | 4 tests unitaires | **En Ligne** |
+| **MOD-13** | Laboratoire d'Analyses & Biologie Médicale (LOINC) | **100% Terminé** | 3 tests unitaires | **En Ligne** |
+| **MOD-14** | Surveillance Épidémiologique & Rapports DHIS2/OMS | **100% Terminé** | 3 tests unitaires | **En Ligne** |
+| **MOD-15** | Messagerie Sécurisée & Alertes Multi-Entités | **100% Terminé** | 4 tests unitaires | **En Ligne** |
 
 ---
 
