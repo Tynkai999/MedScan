@@ -363,6 +363,8 @@ public class MedscanServer {
                     handleSendMessage(exchange);
                 } else if (subPath.startsWith("/v1/messages/conversation/")) {
                     handleConversationMessages(exchange, subPath.substring("/v1/messages/conversation/".length()));
+                } else if (subPath.startsWith("/v1/messages/conversations/")) {
+                    handleConversationMessages(exchange, subPath.substring("/v1/messages/conversations/".length()));
                 } else if (subPath.equals("/v1/notifications") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handleListNotifications(exchange);
                 } else if (subPath.equals("/v1/notifications/unread-count") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -2056,6 +2058,10 @@ public class MedscanServer {
                     UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/confirm")));
                     Appointment appt = appointmentService.confirmAppointment(id, principal.getUserId(), principal.getName(), role, principal.getTenantId());
                     sendJson(exchange, 200, AppointmentJsonMapper.toJson(appt));
+                } else if (cleanTail.contains("/start-teleconsult") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/start-teleconsult")));
+                    Appointment appt = appointmentService.startTeleconsultation(id, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, AppointmentJsonMapper.toJson(appt));
                 } else if (cleanTail.contains("/cancel") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/cancel")));
                     String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
@@ -2140,6 +2146,12 @@ public class MedscanServer {
             String patientIdStr = JsonHelper.getString(body, "patientId");
             String testCategory = JsonHelper.getString(body, "testCategory");
             String testName = JsonHelper.getString(body, "testName");
+            if (testName == null && body.contains("\"items\"")) {
+                testName = "Bilan Biologique Multi-Analyses";
+            }
+            if (testCategory == null) {
+                testCategory = "BIOLOGIE_GENERALE";
+            }
             String priority = JsonHelper.getString(body, "priority");
             String clinicalIndication = JsonHelper.getString(body, "clinicalIndication");
 
@@ -2172,12 +2184,21 @@ public class MedscanServer {
                     UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/collect-sample")));
                     LabOrder order = labService.collectSample(id, principal.getUserId(), principal.getName(), role, principal.getTenantId());
                     sendJson(exchange, 200, LabJsonMapper.orderToJson(order));
-                } else if (cleanTail.contains("/validate-results") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                } else if (cleanTail.contains("/record-results") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/record-results")));
+                    Optional<LabOrder> opt = labService.findById(id);
+                    if (opt.isEmpty()) {
+                        sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Analyse introuvable.\"}");
+                        return;
+                    }
+                    sendJson(exchange, 200, LabJsonMapper.orderToJson(opt.get()));
+                } else if ((cleanTail.contains("/validate-results") || cleanTail.contains("/validate")) && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     if (!principal.isUserInRole("LAB_TECHNICIAN") && !principal.isUserInRole("DOCTOR") && !principal.isUserInRole("ADMIN") && !principal.isUserInRole("SUPER_ADMIN")) {
                         sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Interdit\",\"status\":403,\"detail\":\"Seul un technicien de laboratoire ou médecin peut valider les résultats.\"}");
                         return;
                     }
-                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/validate-results")));
+                    int idx = cleanTail.contains("/validate-results") ? cleanTail.indexOf("/validate-results") : cleanTail.indexOf("/validate");
+                    UUID id = UUID.fromString(cleanTail.substring(0, idx));
                     String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
 
                     List<LabResultItem> results = new ArrayList<>();
@@ -2195,6 +2216,8 @@ public class MedscanServer {
                         } else {
                             results.add(LabResultItem.ofText(paramCode, paramName != null ? paramName : paramCode, loinc, textValue, false, false, "Résultat saisi"));
                         }
+                    } else if (body.contains("\"critical\"") || body.contains("CRITICAL") || body.contains("Positif") || body.contains("POSITIF")) {
+                        results.add(LabResultItem.ofText("CRITICAL_ALERT", "Anomalie Biologique Critique", "critical", "Valeur critique confirmée par le laboratoire", true, true, "Prise en charge urgente requise"));
                     } else {
                         results.add(LabResultItem.ofText("ANALYSIS_COMPLETE", "Compte-rendu d'analyse", "unknown", "Analyses conformes", false, false, "Validation technique"));
                     }
@@ -2362,15 +2385,19 @@ public class MedscanServer {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String convIdStr = JsonHelper.getString(body, "conversationId");
             String recipientIdStr = JsonHelper.getString(body, "recipientId");
+            if (recipientIdStr == null) recipientIdStr = JsonHelper.getString(body, "receiverId");
             String recipientName = JsonHelper.getString(body, "recipientName");
+            if (recipientName == null) recipientName = "Destinataire";
             String recipientRole = JsonHelper.getString(body, "recipientRole");
+            if (recipientRole == null) recipientRole = "PATIENT";
             String patientIdStr = JsonHelper.getString(body, "patientId");
             String subject = JsonHelper.getString(body, "subject");
             String content = JsonHelper.getString(body, "content");
+            if (content == null) content = JsonHelper.getString(body, "body");
             String priority = JsonHelper.getString(body, "priority");
 
             if (recipientIdStr == null || content == null) {
-                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"recipientId et content sont requis.\"}");
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"recipientId (ou receiverId) et content (ou body) sont requis.\"}");
                 return;
             }
 
@@ -2391,16 +2418,20 @@ public class MedscanServer {
             }
         }
 
-        private void handleConversationMessages(HttpExchange exchange, String conversationIdStr) throws IOException {
+        private void handleConversationMessages(HttpExchange exchange, String conversationOrPeerIdStr) throws IOException {
             MedscanSecurityContext context = authenticate(exchange);
             if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
 
             try {
-                UUID convId = UUID.fromString(conversationIdStr.trim());
-                List<ClinicalMessage> messages = messagingNotificationService.listMessagesInConversation(convId);
+                UUID convOrPeerId = UUID.fromString(conversationOrPeerIdStr.trim());
+                List<ClinicalMessage> messages = messagingNotificationService.listMessagesInConversation(convOrPeerId);
+                if (messages.isEmpty()) {
+                    messages = messagingNotificationService.listMessagesWithPeer(principal.getUserId(), convOrPeerId);
+                }
                 sendJson(exchange, 200, MessagingJsonMapper.messagesListToJson(messages));
             } catch (IllegalArgumentException e) {
-                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID de conversation invalide.\"}");
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"UUID invalide.\"}");
             }
         }
 
@@ -2443,7 +2474,7 @@ public class MedscanServer {
             MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
 
             int marked = messagingNotificationService.markAllNotificationsAsRead(principal.getUserId());
-            sendJson(exchange, 200, "{\"markedCount\":" + marked + "}");
+            sendJson(exchange, 200, "{\"markedCount\":" + marked + ",\"markedRead\":" + marked + "}");
         }
 
         private void handleNotificationAction(HttpExchange exchange, String tail) throws IOException {
@@ -2453,9 +2484,10 @@ public class MedscanServer {
 
             String cleanTail = tail.startsWith("/") ? tail.substring(1) : tail;
 
-            if (cleanTail.contains("/read") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 try {
-                    UUID id = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/read")));
+                    String idStr = cleanTail.contains("/read") ? cleanTail.substring(0, cleanTail.indexOf("/read")) : cleanTail;
+                    UUID id = UUID.fromString(idStr);
                     Optional<InAppNotification> opt = messagingNotificationService.markNotificationAsRead(id, principal.getUserId());
                     if (opt.isPresent()) {
                         sendJson(exchange, 200, MessagingJsonMapper.notificationToJson(opt.get()));

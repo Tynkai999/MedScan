@@ -136,6 +136,45 @@ public class AppointmentService {
         return updated;
     }
 
+    /**
+     * Démarre la téléconsultation (WebRTC / Jitsi) et met à jour le statut du rendez-vous.
+     */
+    public Appointment startTeleconsultation(UUID appointmentId, UUID actorId, String actorUsername, String actorRole, UUID actorTenantId) {
+        Appointment existing = getAppointmentOrThrow(appointmentId);
+        String roomToken = existing.teleconsultationRoomId();
+        String joinUrl = existing.teleconsultationJoinUrl();
+        if (roomToken == null || roomToken.isBlank() || joinUrl == null || joinUrl.isBlank()) {
+            roomToken = "medscan-tele-" + UUID.randomUUID().toString().substring(0, 8);
+            joinUrl = "https://meet.jit.si/" + roomToken + "#config.prejoinPageEnabled=false";
+        }
+        Appointment updated = new Appointment(
+                existing.id(),
+                existing.tenantId(),
+                existing.patientId(),
+                existing.patientName(),
+                existing.practitionerId(),
+                existing.practitionerName(),
+                existing.practitionerRole(),
+                "TELECONSULTATION",
+                existing.scheduledAt(),
+                existing.durationMinutes(),
+                "IN_PROGRESS",
+                existing.reason(),
+                existing.clinicalNotes(),
+                roomToken,
+                joinUrl,
+                existing.createdAt(),
+                Instant.now()
+        );
+        saveAppointment(updated);
+
+        clinicalService.logAudit(actorId, actorUsername, actorRole, actorTenantId,
+                "TELECONSULT_STARTED", "Appointment", appointmentId.toString(), "SUCCESS",
+                "Séance de téléconsultation lancée pour le rendez-vous " + appointmentId + " (Salle: " + roomToken + ")");
+
+        return updated;
+    }
+
     public Optional<Appointment> findAppointmentById(UUID id) {
         return Optional.ofNullable(appointmentsById.get(id));
     }

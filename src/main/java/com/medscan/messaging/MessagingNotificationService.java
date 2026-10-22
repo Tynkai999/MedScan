@@ -100,6 +100,14 @@ public class MessagingNotificationService {
                 .collect(Collectors.toList());
     }
 
+    public List<ClinicalMessage> listMessagesWithPeer(UUID user1, UUID user2) {
+        return messagesById.values().stream()
+                .filter(m -> (m.senderId().equals(user1) && m.recipientId().equals(user2)) ||
+                             (m.senderId().equals(user2) && m.recipientId().equals(user1)))
+                .sorted(Comparator.comparing(ClinicalMessage::sentAt))
+                .collect(Collectors.toList());
+    }
+
     public List<ClinicalMessage> listUserMessages(UUID userId) {
         return messagesById.values().stream()
                 .filter(m -> m.senderId().equals(userId) || m.recipientId().equals(userId))
