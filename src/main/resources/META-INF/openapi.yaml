@@ -823,6 +823,91 @@ paths:
         '403':
           description: Forbidden for couriers
 
+  /v1/sync/vault:
+    get:
+      summary: Download offline health vault bundle with optional delta cursor
+      operationId: getSyncVault
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: ISO-8601 timestamp for differential synchronization (returns only changes since this date)
+          schema:
+            type: string
+            format: date-time
+        - name: patientId
+          in: query
+          required: false
+          description: Optional filter to pull offline vault for a single specific patient
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Offline health vault package
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPackage'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+  /v1/sync/push:
+    post:
+      summary: Submit offline batch of clinical operations with strict idempotency deduplication
+      operationId: pushSyncBatch
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncBatchRequest'
+      responses:
+        '200':
+          description: Batch processing summary and optional delta sync package
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncBatchResponse'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+
+  /v1/sync/emergency-card/{patientId}:
+    get:
+      summary: Retrieve standalone emergency health card with SHA-256 tamper-evident integrity hash
+      operationId: getEmergencyCard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          description: Unique patient identifier
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Emergency health card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmergencyCard'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Patient not found
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1197,3 +1282,174 @@ components:
           type: string
         failureReason:
           type: string
+
+    EmergencyCard:
+      type: object
+      properties:
+        patientId:
+          type: string
+          format: uuid
+        nationalId:
+          type: string
+        fullName:
+          type: string
+        gender:
+          type: string
+        birthDate:
+          type: string
+        age:
+          type: integer
+        bloodGroup:
+          type: string
+        allergies:
+          type: array
+          items:
+            type: string
+        chronicConditions:
+          type: array
+          items:
+            type: string
+        emergencyContact:
+          type: string
+        weightKg:
+          type: number
+        heightCm:
+          type: number
+        bmi:
+          type: number
+        bmiCategory:
+          type: string
+        lastBloodPressure:
+          type: string
+        lastHeartRate:
+          type: integer
+        lastOxygenSaturation:
+          type: number
+        lastTriageLevel:
+          type: string
+        lastVitalsRecordedAt:
+          type: string
+          format: date-time
+        activePrescriptionsCount:
+          type: integer
+        generatedAt:
+          type: string
+          format: date-time
+        integrityHash:
+          type: string
+          description: Cryptographic SHA-256 hash ensuring offline card has not been tampered with
+
+    SyncOperation:
+      type: object
+      required:
+        - operationId
+        - entityType
+        - action
+      properties:
+        operationId:
+          type: string
+          format: uuid
+        entityType:
+          type: string
+          enum: [PATIENT, VITAL_SIGNS, CONSULTATION, PRESCRIPTION]
+        action:
+          type: string
+          enum: [CREATE, UPDATE]
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          type: object
+
+    SyncOperationResult:
+      type: object
+      properties:
+        operationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [APPLIED, DUPLICATE_IGNORED, REJECTED, CONFLICT_RESOLVED]
+        entityType:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+        message:
+          type: string
+
+    SyncBatchRequest:
+      type: object
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        deviceId:
+          type: string
+        clientTimestamp:
+          type: string
+          format: date-time
+        pullSince:
+          type: string
+          format: date-time
+          description: Optional timestamp to receive differential updates in the same round-trip
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncOperation'
+
+    SyncBatchResponse:
+      type: object
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        processedAt:
+          type: string
+          format: date-time
+        totalOperations:
+          type: integer
+        appliedCount:
+          type: integer
+        duplicateCount:
+          type: integer
+        errorCount:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncOperationResult'
+        delta:
+          $ref: '#/components/schemas/SyncPackage'
+
+    SyncPackage:
+      type: object
+      properties:
+        syncTimestamp:
+          type: string
+          format: date-time
+        sinceTimestamp:
+          type: string
+          format: date-time
+        totalRecords:
+          type: integer
+        patients:
+          type: array
+          items:
+            $ref: '#/components/schemas/Patient'
+        vitalSigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/VitalSigns'
+        consultations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Consultation'
+        prescriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Prescription'
+        emergencyCards:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmergencyCard'

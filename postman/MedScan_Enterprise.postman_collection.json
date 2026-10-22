@@ -2097,6 +2097,123 @@
           }
         }
       ]
+    },
+    {
+      "name": "12. Synchronisation Hors-Ligne & Delta-Sync (MOD-10)",
+      "item": [
+        {
+          "name": "01. Télécharger le Coffre Hors-Ligne Complet (GET /v1/sync/vault)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/sync/vault",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "sync",
+                "vault"
+              ]
+            },
+            "description": "Téléchargement complet du coffre médical hors-ligne pour travail en zone isolée sans réseau."
+          }
+        },
+        {
+          "name": "02. Télécharger le Delta Différentiel Récent (GET /v1/sync/vault?since=...)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/sync/vault?since=2026-10-22T18:00:00Z",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "sync",
+                "vault"
+              ],
+              "query": [
+                {
+                  "key": "since",
+                  "value": "2026-10-22T18:00:00Z",
+                  "description": "Curseur temporel pour synchronisation différentielle basse consommation"
+                }
+              ]
+            },
+            "description": "Récupération uniquement des mutations survenues depuis le curseur temporel (delta-sync)."
+          }
+        },
+        {
+          "name": "03. Soumettre un Lot Hors-Ligne - Push Idempotent (POST /v1/sync/push)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batchId\": \"c56a4180-65aa-42ec-a945-5fd21dec0538\",\n  \"deviceId\": \"samsung-galaxy-tab-sahel-01\",\n  \"clientTimestamp\": \"2026-10-22T21:00:00Z\",\n  \"pullSince\": \"2026-10-22T18:00:00Z\",\n  \"operations\": [\n    {\n      \"operationId\": \"48b6f3c1-01f1-4db3-9828-5692fa77494a\",\n      \"entityType\": \"VITAL_SIGNS\",\n      \"action\": \"CREATE\",\n      \"occurredAt\": \"2026-10-22T20:30:00Z\",\n      \"payload\": {\n        \"patientId\": \"99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e\",\n        \"systolicBp\": 126,\n        \"diastolicBp\": 82,\n        \"heartRate\": 74,\n        \"temperature\": 37.1,\n        \"weightKg\": 63.0,\n        \"heightCm\": 168.0,\n        \"oxygenSaturation\": 98.0,\n        \"notes\": \"Mesure de terrain dispensaire rural\"\n      }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/sync/push",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "sync",
+                "push"
+              ]
+            },
+            "description": "Ingestion de mutations hors-ligne avec déduplication stricte par operationId (aucun doublon lors des réessais réseau)."
+          }
+        },
+        {
+          "name": "04. Consulter la Fiche Médicale d'Urgence Autonome (GET /v1/sync/emergency-card/:id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctor_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/sync/emergency-card/99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "sync",
+                "emergency-card",
+                "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"
+              ]
+            },
+            "description": "Fiche d'urgence compacte infalsifiable avec empreinte SHA-256 pour triage hors-ligne ou QR-code d'urgence."
+          }
+        }
+      ]
     }
   ]
 }

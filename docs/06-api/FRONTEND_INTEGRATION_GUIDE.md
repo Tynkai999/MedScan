@@ -864,6 +864,125 @@ Le livreur saisit le code à 6 chiffres dicté par le patient.
 
 ---
 
+### 4.16 Module MOD-10 : Synchronisation Hors-Ligne (Offline-First & Delta-Sync)
+
+Le module MOD-10 garantit la continuité absolue des soins dans les zones à connectivité intermittente ou inexistante (dispensaires ruraux, centres de santé isolés du Sahel, campagnes foraines de vaccination ou coupures réseau 2G/3G).
+
+Il repose sur 3 piliers architecturaux :
+1. **Coffre Médical Hors-Ligne (`SyncPackage`)** : Téléchargement préalable des dossiers patients, constantes, antécédents, ordonnances et fiches d'urgence pour stockage chiffré local (WatermelonDB / SQLite / Hive).
+2. **Delta-Sync Différentiel (`since=<timestamp>`)** : Ne transfère que les mutations intervenues sur le serveur depuis la dernière synchronisation, économisant la bande passante mobile.
+3. **Ingestion Idempotente par Lot (`SyncBatchRequest` & `SyncBatchResponse`)** : Chaque mutation locale créée hors-ligne porte un `operationId` (UUID client unique). En cas de micro-coupure réseau lors du renvoi, le serveur déduplique sans insérer de doublons (`DUPLICATE_IGNORED`).
+4. **Fiche Médicale d'Urgence Autonome (`EmergencyCard`)** : Format compact avec empreinte cryptographique SHA-256 (`integrityHash`) pour affichage hors-ligne ou encodage QR-code infalsifiable.
+
+#### 4.16.1 Téléchargement du Coffre Médical Hors-Ligne / Delta-Sync
+Permet de synchroniser les dossiers médicaux complets ou incrémentaux :
+- **Méthode** : `GET`
+- **Chemin** : `/v1/sync/vault` (alias : `/v1/sync/pull`)
+- **Paramètres de requête** :
+  - `since` *(optionnel)* : Date ISO-8601 (ex: `2026-10-22T18:00:00Z`). Si omis, renvoie l'intégralité du coffre accessible.
+  - `patientId` *(optionnel)* : UUID d'un patient spécifique si l'on ne souhaite synchroniser qu'un seul dossier.
+- **Réponse Succès (200 OK)** :
+```json
+{
+  "syncTimestamp": "2026-10-22T21:45:00Z",
+  "sinceTimestamp": "2026-10-22T18:00:00Z",
+  "totalRecords": 4,
+  "patients": [ ... ],
+  "vitalSigns": [ ... ],
+  "consultations": [ ... ],
+  "prescriptions": [ ... ],
+  "emergencyCards": [
+    {
+      "patientId": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+      "nationalId": "BFA-2026-008412",
+      "fullName": "Fatou Ouedraogo",
+      "gender": "F",
+      "birthDate": "1994-06-18",
+      "age": 32,
+      "bloodGroup": "A+",
+      "allergies": ["Pénicilline", "Arachide"],
+      "chronicConditions": ["Asthme léger"],
+      "emergencyContact": "Moussa Ouedraogo (+226 76 11 22 33)",
+      "weightKg": 62.5,
+      "heightCm": 168.0,
+      "bmi": 22.1,
+      "bmiCategory": "Poids normal",
+      "lastBloodPressure": "120/80 mmHg",
+      "lastHeartRate": 72,
+      "lastOxygenSaturation": 98.5,
+      "lastTriageLevel": "NORMAL",
+      "activePrescriptionsCount": 1,
+      "generatedAt": "2026-10-22T21:45:00Z",
+      "integrityHash": "a4f8d93c4e...sha256"
+    }
+  ]
+}
+```
+
+#### 4.16.2 Ingestion Idempotente d'un Lot Hors-Ligne (Push Batch)
+Permet à l'application mobile de vider sa file d'attente d'opérations hors-ligne lors du rétablissement de la connexion :
+- **Méthode** : `POST`
+- **Chemin** : `/v1/sync/push`
+- **Corps de Requête** :
+```json
+{
+  "batchId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+  "deviceId": "samsung-active-tab-sahel-03",
+  "clientTimestamp": "2026-10-22T21:00:00Z",
+  "pullSince": "2026-10-22T18:00:00Z",
+  "operations": [
+    {
+      "operationId": "48b6f3c1-01f1-4db3-9828-5692fa77494a",
+      "entityType": "VITAL_SIGNS",
+      "action": "CREATE",
+      "occurredAt": "2026-10-22T19:30:00Z",
+      "payload": {
+        "patientId": "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e",
+        "systolicBp": 125,
+        "diastolicBp": 82,
+        "heartRate": 74,
+        "temperature": 37.1,
+        "weightKg": 63.0,
+        "heightCm": 168.0,
+        "oxygenSaturation": 98.0,
+        "notes": "Mesure en visite foraine dispensaire"
+      }
+    }
+  ]
+}
+```
+- **Réponse Succès (200 OK)** :
+```json
+{
+  "batchId": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+  "processedAt": "2026-10-22T21:05:00Z",
+  "totalOperations": 1,
+  "appliedCount": 1,
+  "duplicateCount": 0,
+  "errorCount": 0,
+  "results": [
+    {
+      "operationId": "48b6f3c1-01f1-4db3-9828-5692fa77494a",
+      "status": "APPLIED",
+      "entityType": "VITAL_SIGNS",
+      "entityId": "e9381a10-4491-4e78-98e1-5bc4911d0441",
+      "message": "Constantes vitales synchronisées avec succès."
+    }
+  ],
+  "delta": { ... }
+}
+```
+*Si le paquet est réémis suite à un timeout réseau, la réponse retourne `"status": "DUPLICATE_IGNORED"` et `"appliedCount": 0, "duplicateCount": 1` sans doubler les données cliniques.*
+
+#### 4.16.3 Fiche Médicale d'Urgence Autonome
+Fournit un passeport médical d'urgence compact vérifiable sans réseau (tamper-evident SHA-256) :
+- **Méthode** : `GET`
+- **Chemin** : `/v1/sync/emergency-card/{patientId}`
+- **Permissions requises** : Personnel soignant ou patient lui-même
+- **Réponse Succès (200 OK)** : Objet `EmergencyCard` prêt pour affichage QR-code ou triage Samu.
+
+---
+
 ## 5. Modèle Standardisé des Erreurs (RFC 7807 Problem Details)
 
 Toutes les erreurs de l'API MedScan Enterprise suivent strictement la spécification standard **RFC 7807** :
@@ -1221,7 +1340,97 @@ export const MedscanApi = {
     const res = await apiClient.get<{ deliveryCode: string; otpCode: string; otpExpiresAt: string; attemptsRemaining: number }>(`/v1/deliveries/${id}/otp`);
     return res.data;
   },
+
+  // Module Synchronisation Hors-Ligne & Delta-Sync (MOD-10)
+  pullSyncVault: async (since?: string, patientId?: string): Promise<SyncPackage> => {
+    const res = await apiClient.get<SyncPackage>('/v1/sync/vault', {
+      params: { ...(since ? { since } : {}), ...(patientId ? { patientId } : {}) },
+    });
+    return res.data;
+  },
+
+  pushSyncBatch: async (batch: SyncBatchRequest): Promise<SyncBatchResponse> => {
+    const res = await apiClient.post<SyncBatchResponse>('/v1/sync/push', batch);
+    return res.data;
+  },
+
+  getEmergencyCard: async (patientId: string): Promise<EmergencyCard> => {
+    const res = await apiClient.get<EmergencyCard>(`/v1/sync/emergency-card/${patientId}`);
+    return res.data;
+  },
 };
+
+// 6. Interfaces Synchronisation Hors-Ligne (MOD-10)
+export interface EmergencyCard {
+  patientId: string;
+  nationalId: string;
+  fullName: string;
+  gender: string;
+  birthDate: string;
+  age: number;
+  bloodGroup: string;
+  allergies: string[];
+  chronicConditions: string[];
+  emergencyContact: string;
+  weightKg?: number;
+  heightCm?: number;
+  bmi?: number;
+  bmiCategory?: string;
+  lastBloodPressure?: string;
+  lastHeartRate?: number;
+  lastOxygenSaturation?: number;
+  lastTriageLevel: string;
+  lastVitalsRecordedAt?: string;
+  activePrescriptionsCount: number;
+  generatedAt: string;
+  integrityHash: string;
+}
+
+export interface SyncOperation {
+  operationId: string;
+  entityType: 'PATIENT' | 'VITAL_SIGNS' | 'CONSULTATION' | 'PRESCRIPTION';
+  action: 'CREATE' | 'UPDATE';
+  occurredAt?: string;
+  payload: Record<string, any>;
+}
+
+export interface SyncOperationResult {
+  operationId: string;
+  status: 'APPLIED' | 'DUPLICATE_IGNORED' | 'REJECTED' | 'CONFLICT_RESOLVED';
+  entityType: string;
+  entityId?: string;
+  message: string;
+}
+
+export interface SyncBatchRequest {
+  batchId?: string;
+  deviceId?: string;
+  clientTimestamp?: string;
+  pullSince?: string;
+  operations: SyncOperation[];
+}
+
+export interface SyncBatchResponse {
+  batchId: string;
+  processedAt: string;
+  totalOperations: number;
+  appliedCount: number;
+  duplicateCount: number;
+  errorCount: number;
+  results: SyncOperationResult[];
+  delta?: SyncPackage;
+}
+
+export interface SyncPackage {
+  syncTimestamp: string;
+  sinceTimestamp?: string;
+  totalRecords: number;
+  patients: any[];
+  vitalSigns: any[];
+  consultations: any[];
+  prescriptions: any[];
+  emergencyCards: EmergencyCard[];
+}
 ```
 
 ---

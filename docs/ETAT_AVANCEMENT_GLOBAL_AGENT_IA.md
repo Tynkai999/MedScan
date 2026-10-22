@@ -58,7 +58,7 @@ Ce document fournit à l'agent IA (qu'il soit chargé de la modélisation Machin
 ┌────────────────────┐                                    ┌────────────────────┐
 │ MOD-10 : OFFLINE & │                                    │ MOD-11 : AUDIT &   │
 │ SYNCHRONISATION    │                                    │ OBSERVABILITÉ DPO  │
-│  [SPÉCIFIÉ / ROAD] │                                    │  [100% OPÉRATIONNEL│
+│  [100% OPÉRATIONNEL│                                    │  [100% OPÉRATIONNEL│
 └────────────────────┘                                    └────────────────────┘
 ```
 
@@ -75,7 +75,7 @@ Ce document fournit à l'agent IA (qu'il soit chargé de la modélisation Machin
 | **MOD-07** | Interoperability Hub (Standard HL7 FHIR R4) | *Spécifié* | À implémenter | Backlog (Phase 2) |
 | **MOD-08** | E-Prescription & Dispensation en Pharmacie | **100% Terminé** | Validé en intégration | **En Ligne** |
 | **MOD-09** | Delivery Sécurisée & Remise par Code OTP | **100% Terminé** | 5 tests unitaires & intégration | **En Ligne** |
-| **MOD-10** | Synchronisation Hors-Ligne & Delta-Sync | *Spécifié* | À implémenter | Backlog (Phase 3) |
+| **MOD-10** | Synchronisation Hors-Ligne & Delta-Sync | **100% Terminé** | 7 tests unitaires & intégration | **En Ligne** |
 | **MOD-11** | Journal d'Audit Immuable DPO & Conformité | **100% Terminé** | Validé en intégration | **En Ligne** |
 
 ---
@@ -195,22 +195,33 @@ Tous les comptes utilisent le mot de passe unifié : **`Password123!`**
 ### Traçabilité & Audit Réglementaire (MOD-11)
 - `GET  /v1/audit/logs` : Piste d'audit inviolable réservée au DPO (`AUDITOR`) et superviseurs.
 
+### Livraison & Logistique Sécurisée (MOD-09)
+- `GET  /v1/deliveries` : Liste des missions de livraison filtrée selon le rôle (coursier, patient, officine).
+- `POST /v1/deliveries` : Création d'une mission de livraison liée à une ordonnance ou à la demande.
+- `POST /v1/deliveries/{id}/assign` : Attribution de la course à un livreur assermenté.
+- `POST /v1/deliveries/{id}/pickup` : Retrait du colis scellé en pharmacie (passage à `IN_TRANSIT`).
+- `GET  /v1/deliveries/{id}/otp` : Consultation du code OTP secret réservée exclusivement au patient destinataire.
+- `POST /v1/deliveries/{id}/complete` : Validation définitive de la remise en main propre par saisie OTP à 6 chiffres.
+
+### Synchronisation Hors-Ligne & Delta-Sync (MOD-10)
+- `GET  /v1/sync/vault` (ou `/v1/sync/pull`) : Téléchargement complet du coffre médical ou différentiel par curseur temporel (`?since=<ISO_DATE>`).
+- `POST /v1/sync/push` : Ingestion de mutations hors-ligne avec déduplication strictement idempotente par `operationId`.
+- `GET  /v1/sync/emergency-card/{patientId}` : Fiche médicale d'urgence autonome compacte avec empreinte d'intégrité SHA-256 (`integrityHash`) pour affichage QR-code hors-ligne.
+
 ---
 
 ## 7. Feuille de Route & Prochaines Actions Immédiates
 
-### État de MOD-09 : Logistique de Livraison Sécurisée (100% Opérationnel)
-Le flux complet **Médecin ➔ Pharmacie ➔ Livreur ➔ Patient** est entièrement fonctionnel :
-1. **Création de la mission de livraison** liée à une ordonnance ou initiée à la demande.
-2. **Attribution au coursier** (`DELIVERY_AGENT`, `express-medic`).
-3. **Machine à états complète** : `CREATED` ➔ `ASSIGNED` ➔ `PICKED_UP` ➔ `IN_TRANSIT` ➔ `DELIVERED`.
-4. **Preuve de remise par Code OTP à 6 chiffres** généré cryptographiquement (`SecureRandom` + SHA-256 avec sel, TTL 24h, limite 3 essais anti-bruteforce).
-5. **Protection stricte** : le code OTP n'est visible que par le patient destinataire.
+### État de MOD-10 : Synchronisation Hors-Ligne & Delta-Sync (100% Opérationnel)
+Le protocole de synchronisation garantit la continuité médicale en zone déconnectée :
+1. **Coffre Médical Hors-Ligne (`SyncPackage`)** : Téléchargement sécurisé et filtrage différentiel (`sinceTimestamp`) pour basse consommation réseau.
+2. **Ingestion Idempotente (`SyncBatchRequest`)** : Déduplication stricte par `operationId` client (les réessais réseau 2G/3G n'insèrent jamais de doublons).
+3. **Fiche Médicale d'Urgence Autonome (`EmergencyCard`)** : Fiche compacte avec calcul automatique d'empreinte SHA-256 (`integrityHash`) inviolable, utilisable pour triage d'urgence et affichage QR-code sans réseau.
+4. **Réconciliation Bidirectionnelle** : Le client peut pousser ses modifications locales et recevoir le delta serveur dans un unique aller-retour HTTP.
 
 ### Prochaines Étapes Immédiates Conseillées :
 1. **MOD-07 : Hub d'Interopérabilité HL7 FHIR R4** : Standardisation internationale des échanges hospitaliers (`/fhir/r4/Patient`, `/fhir/r4/Observation`, `/fhir/r4/MedicationRequest`, `/fhir/r4/Bundle`).
 2. **Module Biologie Médicale & Analyses Labo** : Prescriptions d'analyses, saisie des résultats biologiques et valeurs de référence pour le rôle `LAB_TECHNICIAN` (`lab@medscan.org`).
-3. **MOD-10 : Synchronisation Hors-Ligne (Offline-First & Delta-Sync)** : Protocole de synchronisation différentielle bidirectionnelle pour zones à faible connectivité.
 
 ### Documentation Complémentaire pour les Développeurs
 - 📘 Guide Intégration Frontend (React/Next, Flutter, Dart & TS) : [`docs/06-api/FRONTEND_INTEGRATION_GUIDE.md`](file:///Users/tpe4/Downloads/medscan-backend/docs/06-api/FRONTEND_INTEGRATION_GUIDE.md)

@@ -573,4 +573,90 @@ class MedscanServerTest {
         assertTrue(goodOtpResp.body().contains("\"status\":\"DELIVERED\""));
         assertTrue(goodOtpResp.body().contains("Mme Fatou Ouedraogo"));
     }
+
+    // ==========================================
+    // TESTS INTÉGRATION SYNCHRONISATION HORS-LIGNE (MOD-10)
+    // ==========================================
+
+    private static String login(String username, String password) throws Exception {
+        HttpResponse<String> loginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}"))
+                .build(), HttpResponse.BodyHandlers.ofString());
+        return JsonHelper.getString(loginResp.body(), "accessToken");
+    }
+
+    @Test
+    @DisplayName("HTTP GET /v1/sync/vault permet de télécharger le coffre hors-ligne complet")
+    void testSyncPullVaultEndpoint() throws Exception {
+        String token = login("doctor@medscan.org", "Doctor123!");
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/sync/vault"))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"patients\":"));
+        assertTrue(response.body().contains("\"vitalSigns\":"));
+        assertTrue(response.body().contains("\"consultations\":"));
+        assertTrue(response.body().contains("\"emergencyCards\":"));
+        assertTrue(response.body().contains("\"syncTimestamp\":"));
+    }
+
+    @Test
+    @DisplayName("HTTP GET /v1/sync/emergency-card/{patientId} génère la fiche d'urgence avec empreinte SHA-256")
+    void testSyncEmergencyCardEndpoint() throws Exception {
+        String token = login("doctor@medscan.org", "Doctor123!");
+        String patientId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/sync/emergency-card/" + patientId))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"fullName\":\"Fatou Ouedraogo\""));
+        assertTrue(response.body().contains("\"bloodGroup\":\"A+\""));
+        assertTrue(response.body().contains("\"integrityHash\":"));
+    }
+
+    @Test
+    @DisplayName("HTTP POST /v1/sync/push traite les lots hors-ligne avec déduplication idempotente stricte")
+    void testSyncPushIdempotencyEndpoint() throws Exception {
+        String token = login("doctor@medscan.org", "Doctor123!");
+        String opId = java.util.UUID.randomUUID().toString();
+        String batchId = java.util.UUID.randomUUID().toString();
+        String patientId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+
+        String batchBody = "{\"batchId\":\"" + batchId + "\",\"deviceId\":\"tablet-burkina-01\",\"operations\":[{\"operationId\":\"" + opId + "\",\"entityType\":\"VITAL_SIGNS\",\"action\":\"CREATE\",\"occurredAt\":\"2026-10-22T20:00:00Z\",\"payload\":{\"patientId\":\"" + patientId + "\",\"systolicBp\":122,\"diastolicBp\":80,\"heartRate\":75,\"temperature\":37.0,\"notes\":\"Mission mobile brousse\"}}]}";
+
+        // 1er envoi : opération appliquée
+        HttpRequest push1 = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/sync/push"))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(batchBody))
+                .build();
+
+        HttpResponse<String> resp1 = client.send(push1, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp1.statusCode());
+        assertTrue(resp1.body().contains("\"appliedCount\":1"));
+        assertTrue(resp1.body().contains("\"duplicateCount\":0"));
+        assertTrue(resp1.body().contains("\"status\":\"APPLIED\""));
+
+        // 2e envoi identique (rejeu réseau après micro-coupure 2G/3G) : dédupliqué sans erreur
+        HttpResponse<String> resp2 = client.send(push1, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp2.statusCode());
+        assertTrue(resp2.body().contains("\"appliedCount\":0"));
+        assertTrue(resp2.body().contains("\"duplicateCount\":1"));
+        assertTrue(resp2.body().contains("\"status\":\"DUPLICATE_IGNORED\""));
+    }
 }

@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -62,6 +63,12 @@ import com.medscan.security.tenant.TenantContext;
 import com.medscan.security.tenant.TenantJsonMapper;
 import com.medscan.security.tenant.TenantRegistry;
 import com.medscan.security.tenant.VerifiedTenantIdentity;
+import com.medscan.sync.EmergencyCard;
+import com.medscan.sync.SyncBatchRequest;
+import com.medscan.sync.SyncBatchResponse;
+import com.medscan.sync.SyncJsonMapper;
+import com.medscan.sync.SyncPackage;
+import com.medscan.sync.SyncService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -88,6 +95,7 @@ public class MedscanServer {
     private final ImagingService imagingService;
     private final DeliveryService deliveryService;
     private final DashboardService dashboardService;
+    private final SyncService syncService;
 
     public MedscanServer(int port) {
         this.port = port;
@@ -101,6 +109,7 @@ public class MedscanServer {
         this.imagingService = new ImagingService(clinicalService);
         this.deliveryService = new DeliveryService(clinicalService, tenantRegistry);
         this.dashboardService = new DashboardService(clinicalService, imagingService, tenantRegistry, deliveryService);
+        this.syncService = new SyncService(clinicalService);
     }
 
     public DeliveryService getDeliveryService() {
@@ -125,6 +134,10 @@ public class MedscanServer {
 
     public ImagingService getImagingService() {
         return imagingService;
+    }
+
+    public SyncService getSyncService() {
+        return syncService;
     }
 
     public static void main(String[] args) throws IOException {
@@ -255,6 +268,12 @@ public class MedscanServer {
                 } else if (subPath.startsWith("/v1/deliveries/") || subPath.startsWith("/v1/delivery/orders/")) {
                     String tail = subPath.startsWith("/v1/deliveries/") ? subPath.substring("/v1/deliveries/".length()) : subPath.substring("/v1/delivery/orders/".length());
                     handleDeliveryAction(exchange, tail);
+                } else if ((subPath.equals("/v1/sync/vault") || subPath.equals("/v1/sync/pull")) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleSyncPull(exchange);
+                } else if (subPath.equals("/v1/sync/push") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleSyncPush(exchange);
+                } else if (subPath.startsWith("/v1/sync/emergency-card/") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleEmergencyCard(exchange, subPath.substring("/v1/sync/emergency-card/".length()));
                 } else {
                     sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Point d'accès introuvable: " + subPath + "\"}");
                 }
@@ -1437,6 +1456,127 @@ public class MedscanServer {
             if (!principal.isUserInRole("PATIENT")) return false;
             Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
             return pOpt.isPresent() && pOpt.get().id().equals(order.patientId());
+        }
+
+        // ==========================================
+        // SYNCHRONISATION HORS-LIGNE & DELTA (MOD-10)
+        // ==========================================
+
+        private void handleSyncPull(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String rawQuery = exchange.getRequestURI().getQuery();
+            Instant sinceTimestamp = null;
+            UUID patientIdFilter = null;
+
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                for (String param : rawQuery.split("&")) {
+                    String[] kv = param.split("=", 2);
+                    if (kv.length == 2) {
+                        String key = kv[0].trim();
+                        String val = kv[1].trim();
+                        if ("since".equalsIgnoreCase(key) && !val.isBlank()) {
+                            try {
+                                sinceTimestamp = Instant.parse(val);
+                            } catch (Exception ignored) {}
+                        } else if (("patientId".equalsIgnoreCase(key) || "patient_id".equalsIgnoreCase(key)) && !val.isBlank()) {
+                            try {
+                                patientIdFilter = UUID.fromString(val);
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                SyncPackage pkg = syncService.generateOfflineVault(
+                        principal.getUserId(),
+                        principal.getName(),
+                        role,
+                        principal.getTenantId(),
+                        patientIdFilter,
+                        sinceTimestamp
+                );
+                sendJson(exchange, 200, SyncJsonMapper.toJson(pkg));
+            } catch (SecurityException e) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            } catch (Exception e) {
+                sendJson(exchange, 500, "{\"type\":\"https://medscan.org/errors/internal\",\"title\":\"Erreur serveur\",\"status\":500,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleSyncPush(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+            try {
+                SyncBatchRequest request = SyncJsonMapper.parseSyncBatchRequest(body);
+                SyncBatchResponse response = syncService.processBatchPush(
+                        request,
+                        principal.getUserId(),
+                        principal.getName(),
+                        role,
+                        principal.getTenantId()
+                );
+                sendJson(exchange, 200, SyncJsonMapper.toJson(response));
+            } catch (SecurityException e) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            } catch (Exception e) {
+                sendJson(exchange, 500, "{\"type\":\"https://medscan.org/errors/internal\",\"title\":\"Erreur serveur\",\"status\":500,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleEmergencyCard(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String cleanTail = tail;
+            if (cleanTail.contains("?")) {
+                cleanTail = cleanTail.substring(0, cleanTail.indexOf("?"));
+            }
+            if (cleanTail.endsWith("/")) {
+                cleanTail = cleanTail.substring(0, cleanTail.length() - 1);
+            }
+
+            UUID patientId;
+            try {
+                patientId = UUID.fromString(cleanTail);
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Identifiant invalide\",\"status\":400,\"detail\":\"Format UUID de patient attendu: " + JsonHelper.escape(cleanTail) + "\"}");
+                return;
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+
+            try {
+                EmergencyCard card = syncService.generateEmergencyCard(
+                        patientId,
+                        principal.getUserId(),
+                        principal.getName(),
+                        role,
+                        principal.getTenantId()
+                );
+                sendJson(exchange, 200, SyncJsonMapper.toJson(card));
+            } catch (SecurityException e) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Patient introuvable\",\"status\":404,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            } catch (Exception e) {
+                sendJson(exchange, 500, "{\"type\":\"https://medscan.org/errors/internal\",\"title\":\"Erreur serveur\",\"status\":500,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
         }
 
         private MedscanSecurityContext authenticate(HttpExchange exchange) throws IOException {
