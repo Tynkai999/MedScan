@@ -34,6 +34,10 @@ import com.medscan.clinical.VitalSigns;
 import com.medscan.dashboard.ActorDashboardStats;
 import com.medscan.dashboard.DashboardJsonMapper;
 import com.medscan.dashboard.DashboardService;
+import com.medscan.delivery.DeliveryJsonMapper;
+import com.medscan.delivery.DeliveryOrder;
+import com.medscan.delivery.DeliveryService;
+import com.medscan.delivery.DeliveryStatus;
 import com.medscan.imaging.AiAnalysisResult;
 import com.medscan.imaging.ImagingJsonMapper;
 import com.medscan.imaging.ImagingService;
@@ -82,6 +86,7 @@ public class MedscanServer {
     private final ActorPortalResource portalResource;
     private final ClinicalService clinicalService;
     private final ImagingService imagingService;
+    private final DeliveryService deliveryService;
     private final DashboardService dashboardService;
 
     public MedscanServer(int port) {
@@ -94,7 +99,12 @@ public class MedscanServer {
         this.portalResource = new ActorPortalResource(new TenantContext());
         this.clinicalService = new ClinicalService();
         this.imagingService = new ImagingService(clinicalService);
-        this.dashboardService = new DashboardService(clinicalService, imagingService, tenantRegistry);
+        this.deliveryService = new DeliveryService(clinicalService, tenantRegistry);
+        this.dashboardService = new DashboardService(clinicalService, imagingService, tenantRegistry, deliveryService);
+    }
+
+    public DeliveryService getDeliveryService() {
+        return deliveryService;
     }
 
     public TenantRegistry getTenantRegistry() {
@@ -238,6 +248,13 @@ public class MedscanServer {
                     handleImagingStudyAction(exchange, subPath.substring("/v1/imaging/studies/".length()));
                 } else if (subPath.equals("/v1/dashboard/stats") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handleDashboardStats(exchange);
+                } else if ((subPath.equals("/v1/deliveries") || subPath.equals("/v1/delivery/orders")) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListDeliveries(exchange);
+                } else if ((subPath.equals("/v1/deliveries") || subPath.equals("/v1/delivery/orders")) && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleCreateDelivery(exchange);
+                } else if (subPath.startsWith("/v1/deliveries/") || subPath.startsWith("/v1/delivery/orders/")) {
+                    String tail = subPath.startsWith("/v1/deliveries/") ? subPath.substring("/v1/deliveries/".length()) : subPath.substring("/v1/delivery/orders/".length());
+                    handleDeliveryAction(exchange, tail);
                 } else {
                     sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Point d'accès introuvable: " + subPath + "\"}");
                 }
@@ -1135,6 +1152,291 @@ public class MedscanServer {
             );
 
             sendJson(exchange, 200, DashboardJsonMapper.toJson(stats));
+        }
+
+        // ==========================================
+        // GESTION DES LIVRAISONS & LOGISTIQUE (MOD-09)
+        // ==========================================
+
+        private void handleListDeliveries(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            UUID patientIdFilter = null;
+            if (principal.isUserInRole("PATIENT")) {
+                Optional<Patient> opt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (opt.isPresent()) {
+                    patientIdFilter = opt.get().id();
+                }
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+            List<DeliveryOrder> list = deliveryService.listDeliveries(principal.getUserId(), role, principal.getTenantId(), patientIdFilter);
+
+            boolean includeOtp = principal.isUserInRole("PATIENT");
+            sendJson(exchange, 200, DeliveryJsonMapper.toListJson(list, includeOtp));
+        }
+
+        private void handleCreateDelivery(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            if (!principal.isUserInRole("PHARMACIST") && !principal.isUserInRole("DOCTOR")
+                    && !principal.isUserInRole("PATIENT") && !principal.isUserInRole("SUPER_ADMIN")
+                    && !principal.isUserInRole("TENANT_ADMIN")) {
+                sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Vos droits ne vous permettent pas d'ordonnancer une livraison.\"}");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String prescriptionCode = JsonHelper.getString(body, "prescriptionCode");
+            String rawPatientId = JsonHelper.getString(body, "patientId");
+            String patientName = JsonHelper.getString(body, "patientName");
+            String patientPhone = JsonHelper.getString(body, "patientPhone");
+            String deliveryAddress = JsonHelper.getString(body, "deliveryAddress");
+            String destinationCity = JsonHelper.getString(body, "destinationCity");
+            String rawPharmacyTenantId = JsonHelper.getString(body, "pharmacyTenantId");
+            String pharmacyName = JsonHelper.getString(body, "pharmacyName");
+            String packageDescription = JsonHelper.getString(body, "packageDescription");
+            String specialInstructions = JsonHelper.getString(body, "specialInstructions");
+
+            UUID patientId = null;
+            UUID prescriptionId = null;
+            UUID pharmacyTenantId = null;
+
+            if (prescriptionCode != null && !prescriptionCode.isBlank()) {
+                Optional<Prescription> rxOpt = clinicalService.findPrescriptionByCode(prescriptionCode.trim());
+                if (rxOpt.isPresent()) {
+                    Prescription rx = rxOpt.get();
+                    prescriptionId = rx.id();
+                    if (patientId == null) patientId = rx.patientId();
+                    if (patientName == null || patientName.isBlank()) patientName = rx.patientName();
+                }
+            }
+
+            if (rawPatientId != null && !rawPatientId.isBlank()) {
+                try {
+                    patientId = UUID.fromString(rawPatientId);
+                } catch (IllegalArgumentException ignored) {}
+            }
+
+            if (patientId == null && principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (pOpt.isPresent()) {
+                    patientId = pOpt.get().id();
+                    if (patientName == null || patientName.isBlank()) patientName = pOpt.get().fullName();
+                    if (patientPhone == null || patientPhone.isBlank()) patientPhone = pOpt.get().phone();
+                }
+            }
+
+            if (patientId == null) {
+                Optional<Patient> pFirst = clinicalService.findPatientById(UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"));
+                if (pFirst.isPresent()) {
+                    patientId = pFirst.get().id();
+                    if (patientName == null || patientName.isBlank()) patientName = pFirst.get().fullName();
+                    if (patientPhone == null || patientPhone.isBlank()) patientPhone = pFirst.get().phone();
+                } else {
+                    patientId = UUID.randomUUID();
+                }
+            }
+
+            if (rawPharmacyTenantId != null && !rawPharmacyTenantId.isBlank()) {
+                try {
+                    pharmacyTenantId = UUID.fromString(rawPharmacyTenantId);
+                } catch (IllegalArgumentException ignored) {}
+            }
+            if (pharmacyTenantId == null) {
+                pharmacyTenantId = principal.isUserInRole("PHARMACIST") ? principal.getTenantId() : DeliveryService.PHARMACY_TENANT_ID;
+            }
+
+            String role = principal.getRoles().isEmpty() ? "PHARMACIST" : principal.getRoles().iterator().next();
+            DeliveryOrder created = deliveryService.createDelivery(
+                    prescriptionCode,
+                    prescriptionId,
+                    patientId,
+                    patientName,
+                    patientPhone,
+                    deliveryAddress,
+                    destinationCity,
+                    pharmacyTenantId,
+                    pharmacyName,
+                    packageDescription,
+                    specialInstructions,
+                    principal.getUserId(),
+                    principal.getName(),
+                    role,
+                    principal.getTenantId()
+            );
+
+            boolean includeOtp = principal.isUserInRole("PATIENT");
+            sendJson(exchange, 201, DeliveryJsonMapper.toJson(created, includeOtp));
+        }
+
+        private void handleDeliveryAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String method = exchange.getRequestMethod();
+
+            // 1. GET /v1/deliveries/{id}
+            if (!tail.contains("/")) {
+                Optional<DeliveryOrder> opt = findDeliveryByTail(tail);
+                if (opt.isEmpty()) {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Livraison non trouvée\",\"status\":404,\"detail\":\"Aucune commande de livraison trouvée pour: " + JsonHelper.escape(tail) + "\"}");
+                    return;
+                }
+                DeliveryOrder order = opt.get();
+                if ("GET".equalsIgnoreCase(method)) {
+                    boolean includeOtp = principal.isUserInRole("SUPER_ADMIN") || isPatientRecipient(principal, order);
+                    sendJson(exchange, 200, DeliveryJsonMapper.toJson(order, includeOtp));
+                    return;
+                }
+                sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode autorisée: GET\"}");
+                return;
+            }
+
+            int slashIdx = tail.indexOf('/');
+            String idOrCode = tail.substring(0, slashIdx);
+            String action = tail.substring(slashIdx + 1);
+
+            Optional<DeliveryOrder> opt = findDeliveryByTail(idOrCode);
+            if (opt.isEmpty()) {
+                sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Livraison non trouvée\",\"status\":404,\"detail\":\"Aucune commande trouvée pour: " + JsonHelper.escape(idOrCode) + "\"}");
+                return;
+            }
+            DeliveryOrder order = opt.get();
+
+            String role = principal.getRoles().isEmpty() ? "DELIVERY_AGENT" : principal.getRoles().iterator().next();
+
+            // 2. POST /v1/deliveries/{id}/assign
+            if ("assign".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("DELIVERY_AGENT") && !principal.isUserInRole("SUPER_ADMIN") && !principal.isUserInRole("TENANT_ADMIN")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul un livreur agréé ou un superviseur peut s'assigner une course.\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                String rawAgentId = JsonHelper.getString(body, "deliveryAgentId");
+                String agentName = JsonHelper.getString(body, "deliveryAgentName");
+
+                UUID agentId = principal.getUserId();
+                if (rawAgentId != null && !rawAgentId.isBlank() && principal.isUserInRole("SUPER_ADMIN")) {
+                    try {
+                        agentId = UUID.fromString(rawAgentId);
+                    } catch (IllegalArgumentException ignored) {}
+                }
+                if (agentName == null || agentName.isBlank()) {
+                    agentName = principal.getName();
+                }
+
+                try {
+                    DeliveryOrder assigned = deliveryService.assignDelivery(order.id(), agentId, agentName, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, DeliveryJsonMapper.toJson(assigned, false));
+                } catch (IllegalStateException e) {
+                    sendJson(exchange, 409, "{\"type\":\"https://medscan.org/errors/conflict\",\"title\":\"Statut incompatible\",\"status\":409,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+                return;
+            }
+
+            // 3. POST /v1/deliveries/{id}/pickup
+            if ("pickup".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("DELIVERY_AGENT") && !principal.isUserInRole("SUPER_ADMIN")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul le livreur assigné peut retirer le colis scellé.\"}");
+                    return;
+                }
+                try {
+                    DeliveryOrder pickedUp = deliveryService.pickupDelivery(order.id(), principal.getUserId(), principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                    sendJson(exchange, 200, DeliveryJsonMapper.toJson(pickedUp, false));
+                } catch (SecurityException e) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Livreur non assigné\",\"status\":403,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                } catch (IllegalStateException e) {
+                    sendJson(exchange, 409, "{\"type\":\"https://medscan.org/errors/conflict\",\"title\":\"Statut incompatible\",\"status\":409,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+                return;
+            }
+
+            // 4. POST /v1/deliveries/{id}/complete (Vérification OTP)
+            if ("complete".equalsIgnoreCase(action) && "POST".equalsIgnoreCase(method)) {
+                if (!principal.isUserInRole("DELIVERY_AGENT") && !principal.isUserInRole("SUPER_ADMIN")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Seul le livreur peut soumettre le code OTP de validation de remise.\"}");
+                    return;
+                }
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                String otp = JsonHelper.getString(body, "otp");
+                if (otp == null || otp.isBlank()) {
+                    otp = JsonHelper.getString(body, "otpCode");
+                }
+                String recipientConfirmation = JsonHelper.getString(body, "recipientConfirmation");
+
+                if (otp == null || otp.isBlank()) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"OTP requis\",\"status\":400,\"detail\":\"Le code OTP à 6 chiffres est obligatoire pour valider la délivrance du colis.\"}");
+                    return;
+                }
+
+                try {
+                    DeliveryOrder completed = deliveryService.completeDeliveryWithOtp(
+                            order.id(),
+                            otp,
+                            recipientConfirmation,
+                            principal.getUserId(),
+                            principal.getUserId(),
+                            principal.getName(),
+                            role,
+                            principal.getTenantId()
+                    );
+                    sendJson(exchange, 200, DeliveryJsonMapper.toJson(completed, false));
+                } catch (IllegalArgumentException e) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Code OTP incorrect\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                } catch (IllegalStateException e) {
+                    sendJson(exchange, 409, "{\"type\":\"https://medscan.org/errors/conflict\",\"title\":\"Échec de livraison\",\"status\":409,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+                return;
+            }
+
+            // 5. GET /v1/deliveries/{id}/otp
+            if ("otp".equalsIgnoreCase(action) && "GET".equalsIgnoreCase(method)) {
+                if (principal.isUserInRole("DELIVERY_AGENT")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès interdit\",\"status\":403,\"detail\":\"Règle de sécurité stricte : le livreur ne peut pas accéder au code OTP secret du patient.\"}");
+                    return;
+                }
+                try {
+                    String otp = deliveryService.getOtpForPatient(order.id(), principal.getUserId(), role);
+                    sendJson(exchange, 200, "{\"deliveryCode\":\"" + order.deliveryCode() + "\",\"otpCode\":\"" + otp + "\",\"otpExpiresAt\":\"" + order.otpExpiresAt() + "\",\"attemptsRemaining\":" + order.otpAttemptsRemaining() + "}");
+                } catch (Exception e) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Impossible de récupérer l'OTP\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+                return;
+            }
+
+            // 6. POST /v1/deliveries/{id}/fail ou cancel
+            if (("fail".equalsIgnoreCase(action) || "cancel".equalsIgnoreCase(action)) && "POST".equalsIgnoreCase(method)) {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                String reason = JsonHelper.getString(body, "reason");
+                if (reason == null || reason.isBlank()) reason = "Incident ou annulation signalée";
+
+                DeliveryOrder failed = deliveryService.failDelivery(order.id(), reason, principal.getUserId(), principal.getName(), role, principal.getTenantId());
+                sendJson(exchange, 200, DeliveryJsonMapper.toJson(failed, false));
+                return;
+            }
+
+            sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Action inconnue\",\"status\":404,\"detail\":\"Action de livraison introuvable: " + action + "\"}");
+        }
+
+        private Optional<DeliveryOrder> findDeliveryByTail(String tail) {
+            try {
+                UUID id = UUID.fromString(tail);
+                Optional<DeliveryOrder> byId = deliveryService.findById(id);
+                if (byId.isPresent()) return byId;
+            } catch (IllegalArgumentException ignored) {}
+            return deliveryService.findByCode(tail);
+        }
+
+        private boolean isPatientRecipient(MedscanPrincipal principal, DeliveryOrder order) {
+            if (!principal.isUserInRole("PATIENT")) return false;
+            Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+            return pOpt.isPresent() && pOpt.get().id().equals(order.patientId());
         }
 
         private MedscanSecurityContext authenticate(HttpExchange exchange) throws IOException {

@@ -766,6 +766,104 @@ Permet au Super-Admin ou à l'Admin d'Établissement d'ajouter immédiatement un
 
 ---
 
+### 4.15 Module MOD-09 : Logistique de Livraison Sécurisée & Code OTP à 6 Chiffres
+
+Le module MOD-09 permet l'acheminement sécurisé des colis pharmaceutiques scellés depuis les officines partenaires jusqu'au domicile du patient, avec attribution de course, machine à états (`CREATED` ➔ `ASSIGNED` ➔ `PICKED_UP` ➔ `IN_TRANSIT` ➔ `DELIVERED`) et **preuve de livraison cryptographique par code OTP à 6 chiffres**.
+
+> [!IMPORTANT]
+> **Règle de Sécurité Stricte du Code OTP** : Le code OTP en clair n'est **JAMAIS** renvoyé aux livreurs ou au public dans la liste des commandes. Il est délivré **exclusivement au patient destinataire** (affiché dans son carnet de santé ou par notification SMS/App). Lors de la remise physique en main propre, le patient transmet le code oralement au livreur, qui le soumet via l'API pour déverrouiller et finaliser la course. Après 3 tentatives erronées, la livraison est verrouillée par sécurité.
+
+#### 4.15.1 Liste des Livraisons (Filtrage Contextuel par Rôle)
+Permet à chaque acteur de consulter les livraisons pertinentes :
+- **Livreur (`DELIVERY_AGENT`)** : Visualise les missions disponibles à récupérer en pharmacie et ses courses en cours d'acheminement (le code OTP secret est masqué).
+- **Patient (`PATIENT`)** : Visualise ses colis en cours avec son code OTP de déverrouillage en clair.
+- **Pharmacien (`PHARMACIST`)** : Visualise les colis préparés en attente de collecte par coursier.
+- **Méthode** : `GET`
+- **Chemin** : `/v1/deliveries` (alias : `/v1/delivery/orders`)
+- **Exemple de Réponse Livreur (200 OK)** :
+```json
+[
+  {
+    "id": "87a54cf8-5e82-4df9-a9a3-5c26b5d7e012",
+    "deliveryCode": "DEL-2026-0089",
+    "prescriptionCode": "RX-2026-0042",
+    "patientName": "Fatou Ouedraogo",
+    "patientPhone": "+226 70 12 34 56",
+    "deliveryAddress": "Quartier Ouaga 2000, Villa 412, Rue des Ambassades",
+    "destinationCity": "Ouagadougou",
+    "pharmacyName": "Grande Pharmacie Centrale & Officine Avenir",
+    "deliveryAgentName": "Ibrahim Zongo",
+    "status": "IN_TRANSIT",
+    "packageDescription": "Colis scellé pharmaceutique inviolable #SC-4491 (Traitement Asthme)",
+    "otpRequired": true,
+    "otpAttemptsRemaining": 3,
+    "createdAt": "2026-10-22T19:30:00Z"
+  }
+]
+```
+
+#### 4.15.2 Création d'une Mission de Livraison (Pharmacie ou Patient)
+Permet à l'officine (lors de la dispensation) ou au patient d'ordonnancer une livraison à domicile.
+- **Méthode** : `POST`
+- **Chemin** : `/v1/deliveries`
+- **Corps de Requête** :
+```json
+{
+  "prescriptionCode": "RX-2026-0042",
+  "deliveryAddress": "Zone du Bois, Villa 102",
+  "destinationCity": "Ouagadougou",
+  "packageDescription": "Traitement aérosol scellé",
+  "specialInstructions": "Conserver au frais, contrôle d'identité à l'arrivée"
+}
+```
+- **Réponse Succès (201 Created)** : Retourne la livraison créée avec son identifiant et statut `CREATED`.
+
+#### 4.15.3 Prise en Charge & Attribution par un Livreur
+Le livreur assermenté s'assigne la mission de livraison.
+- **Méthode** : `POST`
+- **Chemin** : `/v1/deliveries/{id}/assign`
+- **Permissions requises** : `DELIVERY_AGENT` ou `SUPER_ADMIN`
+- **Réponse Succès (200 OK)** : Statut mis à jour à `ASSIGNED`.
+
+#### 4.15.4 Retrait du Colis Scellé en Pharmacie (Départ en Course)
+Le livreur scanne et récupère le colis physique à l'officine.
+- **Méthode** : `POST`
+- **Chemin** : `/v1/deliveries/{id}/pickup`
+- **Permissions requises** : Livreur assigné
+- **Réponse Succès (200 OK)** : Statut mis à jour à `IN_TRANSIT` avec horodatage `pickedUpAt`.
+
+#### 4.15.5 Consultation du Code Secret OTP (Patient Destinataire Uniquement)
+Permet au patient de lire son code à 6 chiffres pour le donner au livreur.
+- **Méthode** : `GET`
+- **Chemin** : `/v1/deliveries/{id}/otp`
+- **Permissions requises** : `PATIENT` (destinataire) ou `SUPER_ADMIN` (Strictement interdit 403 pour le livreur).
+- **Réponse Succès (200 OK)** :
+```json
+{
+  "deliveryCode": "DEL-2026-0089",
+  "otpCode": "482910",
+  "otpExpiresAt": "2026-10-23T19:30:00Z",
+  "attemptsRemaining": 3
+}
+```
+
+#### 4.15.6 Validation Définitive de la Remise par Saisie OTP
+Le livreur saisit le code à 6 chiffres dicté par le patient.
+- **Méthode** : `POST`
+- **Chemin** : `/v1/deliveries/{id}/complete`
+- **Permissions requises** : `DELIVERY_AGENT`
+- **Corps de Requête** :
+```json
+{
+  "otp": "482910",
+  "recipientConfirmation": "Mme Fatou Ouedraogo (Destinataire en personne)"
+}
+```
+- **Réponse Succès (200 OK)** : Statut mis à jour à `DELIVERED` avec horodatage de livraison et destruction sécurisée du code clair.
+- **Réponse Erreur OTP (400 Bad Request)** : `{"detail":"Code OTP incorrect. Tentatives restantes: 2"}`.
+
+---
+
 ## 5. Modèle Standardisé des Erreurs (RFC 7807 Problem Details)
 
 Toutes les erreurs de l'API MedScan Enterprise suivent strictement la spécification standard **RFC 7807** :
@@ -1077,6 +1175,50 @@ export const MedscanApi = {
 
   createStaffUser: async (userData: { username: string; password?: string; email: string; displayName: string; role: string; tenantId?: string }) => {
     const res = await apiClient.post('/v1/users', userData);
+    return res.data;
+  },
+
+  // Module Livraison & Logistique Sécurisée (MOD-09)
+  listDeliveries: async () => {
+    const res = await apiClient.get('/v1/deliveries');
+    return res.data;
+  },
+
+  getDelivery: async (id: string) => {
+    const res = await apiClient.get(`/v1/deliveries/${id}`);
+    return res.data;
+  },
+
+  createDelivery: async (deliveryData: {
+    prescriptionCode?: string;
+    deliveryAddress: string;
+    destinationCity?: string;
+    packageDescription?: string;
+    specialInstructions?: string;
+    patientId?: string;
+    pharmacyTenantId?: string;
+  }) => {
+    const res = await apiClient.post('/v1/deliveries', deliveryData);
+    return res.data;
+  },
+
+  assignDelivery: async (id: string, agentData?: { deliveryAgentId?: string; deliveryAgentName?: string }) => {
+    const res = await apiClient.post(`/v1/deliveries/${id}/assign`, agentData || {});
+    return res.data;
+  },
+
+  pickupDelivery: async (id: string) => {
+    const res = await apiClient.post(`/v1/deliveries/${id}/pickup`, {});
+    return res.data;
+  },
+
+  completeDeliveryWithOtp: async (id: string, otp: string, recipientConfirmation?: string) => {
+    const res = await apiClient.post(`/v1/deliveries/${id}/complete`, { otp, recipientConfirmation });
+    return res.data;
+  },
+
+  getDeliveryOtp: async (id: string) => {
+    const res = await apiClient.get<{ deliveryCode: string; otpCode: string; otpExpiresAt: string; attemptsRemaining: number }>(`/v1/deliveries/${id}/otp`);
     return res.data;
   },
 };

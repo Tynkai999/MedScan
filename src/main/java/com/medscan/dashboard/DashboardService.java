@@ -18,13 +18,16 @@ import com.medscan.clinical.Prescription;
 import com.medscan.clinical.VitalSigns;
 import com.medscan.dashboard.ActorDashboardStats.CriticalAlert;
 import com.medscan.dashboard.ActorDashboardStats.RecentActivity;
+import com.medscan.delivery.DeliveryOrder;
+import com.medscan.delivery.DeliveryService;
+import com.medscan.delivery.DeliveryStatus;
 import com.medscan.imaging.ImagingService;
 import com.medscan.imaging.ImagingStudy;
 import com.medscan.security.tenant.TenantRegistry;
 
 /**
  * Service de calcul des statistiques consolidées de tableau de bord pour tous les acteurs de MedScan.
- * Intègre les métriques cliniques, alertes de constantes vitales, ordonnances, imagerie et audits.
+ * Intègre les métriques cliniques, alertes de constantes vitales, ordonnances, imagerie, logistique et audits.
  * Résout dynamiquement les noms d'établissements via le TenantRegistry (zéro identifiant en dur).
  */
 public class DashboardService {
@@ -35,15 +38,21 @@ public class DashboardService {
     private final ClinicalService clinicalService;
     private final ImagingService imagingService;
     private final TenantRegistry tenantRegistry;
+    private final DeliveryService deliveryService;
 
-    public DashboardService(ClinicalService clinicalService, ImagingService imagingService, TenantRegistry tenantRegistry) {
+    public DashboardService(ClinicalService clinicalService, ImagingService imagingService, TenantRegistry tenantRegistry, DeliveryService deliveryService) {
         this.clinicalService = clinicalService;
         this.imagingService = imagingService;
         this.tenantRegistry = (tenantRegistry != null) ? tenantRegistry : DEFAULT_TENANT_REGISTRY;
+        this.deliveryService = (deliveryService != null) ? deliveryService : new DeliveryService(clinicalService, this.tenantRegistry);
+    }
+
+    public DashboardService(ClinicalService clinicalService, ImagingService imagingService, TenantRegistry tenantRegistry) {
+        this(clinicalService, imagingService, tenantRegistry, null);
     }
 
     public DashboardService(ClinicalService clinicalService, ImagingService imagingService) {
-        this(clinicalService, imagingService, DEFAULT_TENANT_REGISTRY);
+        this(clinicalService, imagingService, DEFAULT_TENANT_REGISTRY, null);
     }
 
     public ActorDashboardStats getDashboardStats(UUID userId, String username, String role, UUID tenantId) {
@@ -181,6 +190,8 @@ public class DashboardService {
                 kpis.put("pendingPrescriptionsToDispense", pendingDispenses);
                 kpis.put("completedDispenses", completedDispenses);
                 kpis.put("totalPrescriptionsReceived", allPrescriptions.size());
+                long pendingCourierPickups = deliveryService.countDeliveriesByPharmacyAndStatus(tenantId, DeliveryStatus.CREATED);
+                kpis.put("pendingCourierPickups", pendingCourierPickups);
                 kpis.put("lowStockAlertCount", 2); // Salbutamol et Paracétamol pédiatrique
                 kpis.put("averageDispensationTimeMinutes", 4.2);
 
@@ -268,21 +279,39 @@ public class DashboardService {
             }
 
             case "DELIVERY_AGENT": {
-                kpis.put("assignedMissions", 2);
-                kpis.put("inTransitMissions", 1);
-                kpis.put("completedDeliveriesToday", 4);
+                List<DeliveryOrder> agentDeliveries = deliveryService.listDeliveries(userId, "DELIVERY_AGENT", tenantId, null);
+
+                long assigned = agentDeliveries.stream()
+                        .filter(d -> userId.equals(d.deliveryAgentId()) && (d.status() == DeliveryStatus.ASSIGNED || d.status() == DeliveryStatus.PICKED_UP || d.status() == DeliveryStatus.IN_TRANSIT))
+                        .count();
+                long inTransit = agentDeliveries.stream()
+                        .filter(d -> userId.equals(d.deliveryAgentId()) && d.status() == DeliveryStatus.IN_TRANSIT)
+                        .count();
+                long completedToday = agentDeliveries.stream()
+                        .filter(d -> userId.equals(d.deliveryAgentId()) && d.status() == DeliveryStatus.DELIVERED)
+                        .count();
+                long availableMissions = agentDeliveries.stream()
+                        .filter(d -> d.status() == DeliveryStatus.CREATED)
+                        .count();
+
+                kpis.put("assignedMissions", assigned);
+                kpis.put("inTransitMissions", inTransit);
+                kpis.put("completedDeliveriesToday", completedToday);
+                kpis.put("availableMissionsToPickUp", availableMissions);
                 kpis.put("otpVerificationSuccessRate", 100.0);
                 kpis.put("averageDeliveryTimeMinutes", 28.5);
 
-                recentActivities.add(new RecentActivity(
-                        UUID.randomUUID().toString(),
-                        Instant.now().minusSeconds(3600).toString(),
-                        "DELIVERY",
-                        "Livraison ordonnance RX-2026-0042",
-                        "Remis à Mme Fatou Ouedraogo avec validation OTP 6 chiffres",
-                        username,
-                        "DELIVERED"
-                ));
+                for (DeliveryOrder d : agentDeliveries) {
+                    recentActivities.add(new RecentActivity(
+                            d.id().toString(),
+                            (d.deliveredAt() != null ? d.deliveredAt() : d.createdAt()).toString(),
+                            "DELIVERY",
+                            "Course " + d.deliveryCode() + " — " + d.patientName(),
+                            "Ordonnance: " + (d.prescriptionCode() != null ? d.prescriptionCode() : "N/A") + " vers " + d.destinationCity() + " (" + d.status() + ")",
+                            (d.deliveryAgentName() != null ? d.deliveryAgentName() : username),
+                            d.status().name()
+                    ));
+                }
 
                 chartsData.put("weeklyDeliveries", Map.of(
                         "Lun", 8, "Mar", 12, "Mer", 15, "Jeu", 14, "Ven", 19, "Sam", 11
@@ -312,7 +341,8 @@ public class DashboardService {
                     kpis.put("emergencyContact", p.emergencyContact());
                     kpis.put("totalConsultations", myConsults.size());
                     kpis.put("totalPrescriptions", myRxs.size());
-                    kpis.put("totalImagingStudies", myStudies.size());
+                    long activeDeliveries = deliveryService.countActiveDeliveriesForPatient(p.id());
+                    kpis.put("activeDeliveriesCount", activeDeliveries);
 
                     if (!myVitals.isEmpty()) {
                         VitalSigns last = myVitals.get(0);
@@ -335,6 +365,19 @@ public class DashboardService {
                                 rx.id().toString(), rx.issuedAt().toString(), "PRESCRIPTION",
                                 "Ordonnance " + rx.prescriptionCode(),
                                 rx.items().size() + " médicament(s) prescrits", rx.doctorName(), rx.status()
+                        ));
+                    }
+
+                    List<DeliveryOrder> patientDeliveries = deliveryService.listDeliveries(userId, "PATIENT", tenantId, p.id());
+                    for (DeliveryOrder d : patientDeliveries) {
+                        recentActivities.add(new RecentActivity(
+                                d.id().toString(),
+                                d.createdAt().toString(),
+                                "DELIVERY",
+                                "Livraison " + d.deliveryCode() + " (" + d.status() + ")",
+                                "Colis pharmaceutique depuis " + d.pharmacyName() + (d.status() == DeliveryStatus.IN_TRANSIT ? " — En cours d'acheminement" : ""),
+                                (d.deliveryAgentName() != null ? d.deliveryAgentName() : "Service Logistique"),
+                                d.status().name()
                         ));
                     }
                 }

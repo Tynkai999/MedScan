@@ -653,6 +653,176 @@ paths:
         '401':
           description: Unauthorized
 
+  /v1/deliveries:
+    get:
+      summary: List delivery missions filtered by actor role and tenant
+      operationId: listDeliveries
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of delivery orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeliveryOrder'
+        '401':
+          description: Unauthorized
+    post:
+      summary: Create a new pharmaceutical delivery mission
+      operationId: createDelivery
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prescriptionCode:
+                  type: string
+                patientId:
+                  type: string
+                  format: uuid
+                patientName:
+                  type: string
+                patientPhone:
+                  type: string
+                deliveryAddress:
+                  type: string
+                destinationCity:
+                  type: string
+                pharmacyTenantId:
+                  type: string
+                  format: uuid
+                packageDescription:
+                  type: string
+                specialInstructions:
+                  type: string
+      responses:
+        '201':
+          description: Delivery mission created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryOrder'
+        '400':
+          description: Bad request
+        '403':
+          description: Forbidden
+
+  /v1/deliveries/{id}:
+    get:
+      summary: Get details of a delivery mission
+      operationId: getDeliveryById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Delivery order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryOrder'
+        '404':
+          description: Delivery not found
+
+  /v1/deliveries/{id}/assign:
+    post:
+      summary: Assign delivery mission to a courier
+      operationId: assignDelivery
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Delivery mission assigned
+        '403':
+          description: Forbidden
+
+  /v1/deliveries/{id}/pickup:
+    post:
+      summary: Courier picks up sealed medication package at pharmacy
+      operationId: pickupDelivery
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Package picked up, delivery is in transit
+
+  /v1/deliveries/{id}/complete:
+    post:
+      summary: Finalize delivery by validating patient 6-digit OTP code
+      operationId: completeDeliveryWithOtp
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - otp
+              properties:
+                otp:
+                  type: string
+                  example: "482910"
+                recipientConfirmation:
+                  type: string
+                  example: "Fatou Ouedraogo"
+      responses:
+        '200':
+          description: Delivery successfully verified and completed
+        '400':
+          description: Invalid OTP code or attempts exhausted
+        '409':
+          description: Delivery expired or locked
+
+  /v1/deliveries/{id}/otp:
+    get:
+      summary: Patient retrieves their 6-digit delivery release OTP code
+      operationId: getDeliveryOtp
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OTP secret for recipient patient
+        '403':
+          description: Forbidden for couriers
+
 components:
   securitySchemes:
     BearerAuth:
@@ -957,3 +1127,73 @@ components:
                 type: string
         chartsData:
           type: object
+
+    DeliveryOrder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        deliveryCode:
+          type: string
+          example: DEL-2026-0089
+        prescriptionCode:
+          type: string
+          example: RX-2026-0042
+        patientId:
+          type: string
+          format: uuid
+        patientName:
+          type: string
+        patientPhone:
+          type: string
+        deliveryAddress:
+          type: string
+        destinationCity:
+          type: string
+        pharmacyTenantId:
+          type: string
+          format: uuid
+        pharmacyName:
+          type: string
+        logisticsTenantId:
+          type: string
+          format: uuid
+        deliveryAgentId:
+          type: string
+          format: uuid
+        deliveryAgentName:
+          type: string
+        status:
+          type: string
+          enum: [CREATED, ASSIGNED, PICKED_UP, IN_TRANSIT, DELIVERED, FAILED, CANCELLED]
+        packageDescription:
+          type: string
+        specialInstructions:
+          type: string
+        otpRequired:
+          type: boolean
+        otpCode:
+          type: string
+          description: Only visible to authorized patient recipient
+        otpAttemptsRemaining:
+          type: integer
+        otpExpiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        assignedAt:
+          type: string
+          format: date-time
+        pickedUpAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: string
+          format: date-time
+        recipientConfirmation:
+          type: string
+        failureReason:
+          type: string

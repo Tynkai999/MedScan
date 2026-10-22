@@ -1866,6 +1866,237 @@
           }
         }
       ]
+    },
+    {
+      "name": "11 - Delivery & Logistique (MOD-09)",
+      "item": [
+        {
+          "name": "01. Lister les Missions de Livraison (Livreur)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{delivery_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/deliveries",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "deliveries"
+              ]
+            },
+            "description": "Consulter les missions disponibles et en cours (le code OTP secret est masqué)."
+          }
+        },
+        {
+          "name": "02. Mes Colis & Suivi d'Acheminement (Patient)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/deliveries",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "deliveries"
+              ]
+            },
+            "description": "Consulter mes livraisons en cours avec mon code OTP de déverrouillage."
+          }
+        },
+        {
+          "name": "03. Créer une Mission de Livraison (Pharmacie)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pharmacist_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prescriptionCode\": \"RX-2026-0042\",\n  \"deliveryAddress\": \"Quartier Ouaga 2000, Villa 412\",\n  \"destinationCity\": \"Ouagadougou\",\n  \"packageDescription\": \"Colis scellé inviolable (Salbutamol & Paracétamol)\",\n  \"specialInstructions\": \"Remise contre code OTP impératif\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/deliveries",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "deliveries"
+              ]
+            },
+            "description": "Ordonnancer une course de livraison suite à la dispensation."
+          }
+        },
+        {
+          "name": "04. Obtenir le Code Secret OTP (Patient Destinataire)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/deliveries/87a54cf8-5e82-4df9-a9a3-5c26b5d7e012/otp",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "deliveries",
+                "87a54cf8-5e82-4df9-a9a3-5c26b5d7e012",
+                "otp"
+              ]
+            },
+            "description": "Permet au patient de lire son code secret pour le dicter au coursier."
+          }
+        },
+        {
+          "name": "05. Tentative Récupération OTP par Livreur (Bloqué 403 Forbidden)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{delivery_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/deliveries/87a54cf8-5e82-4df9-a9a3-5c26b5d7e012/otp",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "deliveries",
+                "87a54cf8-5e82-4df9-a9a3-5c26b5d7e012",
+                "otp"
+              ]
+            },
+            "description": "Vérifie le blocage de sécurité strict empêchant le coursier de lire le secret."
+          }
+        },
+        {
+          "name": "06. Prise en Charge de la Mission (Livreur)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{delivery_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/deliveries/a1f940b3-90ce-4c12-8874-297c88bba104/assign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "deliveries",
+                "a1f940b3-90ce-4c12-8874-297c88bba104",
+                "assign"
+              ]
+            },
+            "description": "Attribution de la mission au livreur connecté."
+          }
+        },
+        {
+          "name": "07. Retrait du Colis Scellé en Pharmacie (Livreur)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{delivery_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/deliveries/a1f940b3-90ce-4c12-8874-297c88bba104/pickup",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "deliveries",
+                "a1f940b3-90ce-4c12-8874-297c88bba104",
+                "pickup"
+              ]
+            },
+            "description": "Validation du retrait en officine et passage au statut IN_TRANSIT."
+          }
+        },
+        {
+          "name": "08. Validation Définitive de la Remise par Code OTP (Livreur)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{delivery_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"482910\",\n  \"recipientConfirmation\": \"Fatou Ouedraogo\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/deliveries/87a54cf8-5e82-4df9-a9a3-5c26b5d7e012/complete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "deliveries",
+                "87a54cf8-5e82-4df9-a9a3-5c26b5d7e012",
+                "complete"
+              ]
+            },
+            "description": "Validation finale de la délivrance avec le code OTP 6 chiffres."
+          }
+        }
+      ]
     }
   ]
 }

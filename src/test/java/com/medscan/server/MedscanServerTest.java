@@ -1,6 +1,7 @@
 package com.medscan.server;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -430,5 +431,146 @@ class MedscanServerTest {
 
         assertEquals(200, portalResp.statusCode());
         assertTrue(portalResp.body().contains("\"authorizedRole\":\"DOCTOR\""));
+    }
+
+    @Test
+    @DisplayName("GET /v1/deliveries filtre selon le rôle et masque l'OTP pour le livreur mais le révèle au patient")
+    void testListDeliveriesByCourierAndPatient() throws Exception {
+        // 1. Livreur liste ses courses
+        String courierLogin = "{\"username\":\"delivery@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> courierLoginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(courierLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String courierToken = JsonHelper.getString(courierLoginResp.body(), "accessToken");
+
+        HttpResponse<String> courierListResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries"))
+                .header("Authorization", "Bearer " + courierToken)
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, courierListResp.statusCode());
+        String courierBody = courierListResp.body();
+        assertTrue(courierBody.contains("DEL-2026-0089"));
+        assertFalse(courierBody.contains("\"otpCode\":"), "Le code OTP clair ne doit JAMAIS apparaître pour le livreur !");
+
+        // 2. Patient consulte ses livraisons (le code OTP lui est accessible)
+        String patientLogin = "{\"username\":\"patient@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> patientLoginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(patientLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String patientToken = JsonHelper.getString(patientLoginResp.body(), "accessToken");
+
+        HttpResponse<String> patientListResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries"))
+                .header("Authorization", "Bearer " + patientToken)
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, patientListResp.statusCode());
+        String patientBody = patientListResp.body();
+        assertTrue(patientBody.contains("DEL-2026-0089"));
+        assertTrue(patientBody.contains("\"otpCode\":\"482910\""), "Le patient destinataire doit pouvoir lire son code OTP.");
+    }
+
+    @Test
+    @DisplayName("Workflow complet HTTP de livraison avec validation OTP et règles de sécurité strictes")
+    void testDeliveryFullOtpValidationFlow() throws Exception {
+        // 1. Pharmacien crée une mission de livraison
+        String pharmaLogin = "{\"username\":\"pharmacist@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> pharmaLoginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(pharmaLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String pharmaToken = JsonHelper.getString(pharmaLoginResp.body(), "accessToken");
+
+        String createDeliveryPayload = """
+                {
+                    "prescriptionCode": "RX-2026-0042",
+                    "deliveryAddress": "Zone du Bois, Villa 102",
+                    "destinationCity": "Ouagadougou",
+                    "packageDescription": "Traitement aérosol scellé",
+                    "specialInstructions": "Contrôle d'identité requis"
+                }
+                """;
+        HttpResponse<String> createResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries"))
+                .header("Authorization", "Bearer " + pharmaToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(createDeliveryPayload)).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(201, createResp.statusCode());
+        String deliveryId = JsonHelper.getString(createResp.body(), "id");
+        String deliveryCode = JsonHelper.getString(createResp.body(), "deliveryCode");
+        assertNotNull(deliveryId);
+
+        // 2. Patient récupère son code OTP secret
+        String patientLogin = "{\"username\":\"patient@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> patientLoginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(patientLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String patientToken = JsonHelper.getString(patientLoginResp.body(), "accessToken");
+
+        HttpResponse<String> patientOtpResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries/" + deliveryId + "/otp"))
+                .header("Authorization", "Bearer " + patientToken)
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, patientOtpResp.statusCode());
+        String secretOtp = JsonHelper.getString(patientOtpResp.body(), "otpCode");
+        assertNotNull(secretOtp);
+        assertEquals(6, secretOtp.length());
+
+        // 3. Livreur tente d'accéder à l'endpoint OTP -> FORBIDDEN 403
+        String courierLogin = "{\"username\":\"delivery@medscan.org\",\"password\":\"" + SeedUserRegistry.DEFAULT_PASSWORD + "\"}";
+        HttpResponse<String> courierLoginResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(courierLogin)).build(), HttpResponse.BodyHandlers.ofString());
+        String courierToken = JsonHelper.getString(courierLoginResp.body(), "accessToken");
+
+        HttpResponse<String> courierOtpAttempt = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries/" + deliveryId + "/otp"))
+                .header("Authorization", "Bearer " + courierToken)
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(403, courierOtpAttempt.statusCode());
+
+        // 4. Livreur s'assigne la mission
+        HttpResponse<String> assignResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries/" + deliveryId + "/assign"))
+                .header("Authorization", "Bearer " + courierToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, assignResp.statusCode());
+        assertTrue(assignResp.body().contains("\"status\":\"ASSIGNED\""));
+
+        // 5. Livreur retire le colis scellé en pharmacie
+        HttpResponse<String> pickupResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries/" + deliveryId + "/pickup"))
+                .header("Authorization", "Bearer " + courierToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, pickupResp.statusCode());
+        assertTrue(pickupResp.body().contains("\"status\":\"IN_TRANSIT\""));
+
+        // 6. Livreur teste un mauvais OTP -> 400 Bad Request
+        HttpResponse<String> badOtpResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries/" + deliveryId + "/complete"))
+                .header("Authorization", "Bearer " + courierToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"otp\":\"999999\"}")).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(400, badOtpResp.statusCode());
+        assertTrue(badOtpResp.body().contains("incorrect"));
+
+        // 7. Livreur soumet le bon OTP fourni par le patient -> 200 DELIVERED !
+        HttpResponse<String> goodOtpResp = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/deliveries/" + deliveryId + "/complete"))
+                .header("Authorization", "Bearer " + courierToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"otp\":\"" + secretOtp + "\",\"recipientConfirmation\":\"Mme Fatou Ouedraogo\"}")).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, goodOtpResp.statusCode());
+        assertTrue(goodOtpResp.body().contains("\"status\":\"DELIVERED\""));
+        assertTrue(goodOtpResp.body().contains("Mme Fatou Ouedraogo"));
     }
 }
