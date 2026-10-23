@@ -13,6 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 import com.medscan.clinical.ClinicalService;
+import com.medscan.clinical.Patient;
 
 /**
  * Service central de Messagerie Sécurisée & Notifications d'Alertes Multi-Entités (MOD-15).
@@ -24,11 +25,6 @@ public class MessagingNotificationService {
     private final Map<UUID, ClinicalMessage> messagesById = new ConcurrentHashMap<>();
     private final Map<UUID, List<ClinicalMessage>> messagesByConversationId = new ConcurrentHashMap<>();
     private final Map<UUID, List<InAppNotification>> notificationsByUserId = new ConcurrentHashMap<>();
-
-    private static final UUID HOSPITAL_TENANT = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
-    private static final UUID PATIENT_USER_ID = UUID.fromString("116286b8-79e3-48b6-b99e-06fed5f10ee4"); // patient@medscan.org
-    private static final UUID DOCTOR_USER_ID = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");  // doctor@medscan.org
-    private static final UUID LAB_TECH_USER_ID = UUID.fromString("1e4a2c5b-8d3f-4e6a-9b7c-0a1d2e3f4a5b"); // lab@medscan.org
 
     public MessagingNotificationService(ClinicalService clinicalService) {
         this.clinicalService = (clinicalService != null) ? clinicalService : new ClinicalService();
@@ -52,11 +48,12 @@ public class MessagingNotificationService {
         }
 
         UUID convId = (conversationId != null) ? conversationId : UUID.randomUUID();
+        UUID resolvedTenant = tenantId != null ? tenantId : (patientId != null ? clinicalService.findPatientById(patientId).map(Patient::tenantId).orElse(null) : null);
 
         ClinicalMessage message = new ClinicalMessage(
                 UUID.randomUUID(),
                 convId,
-                tenantId != null ? tenantId : HOSPITAL_TENANT,
+                resolvedTenant,
                 senderId,
                 senderName != null ? senderName : "Expéditeur",
                 senderRole != null ? senderRole : "USER",
@@ -129,7 +126,7 @@ public class MessagingNotificationService {
 
         InAppNotification notif = new InAppNotification(
                 UUID.randomUUID(),
-                tenantId != null ? tenantId : HOSPITAL_TENANT,
+                tenantId,
                 recipientUserId,
                 recipientRole != null ? recipientRole : "USER",
                 category != null ? category.toUpperCase() : "GENERAL_INFO",
@@ -191,20 +188,24 @@ public class MessagingNotificationService {
     }
 
     private void initSeedMessagesAndNotifications() {
+        UUID seedHospitalTenant = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
+        UUID seedDoctorUserId = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");
+        UUID seedPatientUserId = UUID.fromString("116286b8-79e3-48b6-b99e-06fed5f10ee4");
+        UUID seedPatientId = UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e");
         UUID conv1 = UUID.fromString("f1111111-2222-3333-4444-555555555551");
 
         // Message 1 : Dr Seydou Traoré -> Fatou Ouedraogo
         ClinicalMessage m1 = new ClinicalMessage(
                 UUID.fromString("e1111111-2222-3333-4444-555555555551"),
                 conv1,
-                HOSPITAL_TENANT,
-                DOCTOR_USER_ID,
+                seedHospitalTenant,
+                seedDoctorUserId,
                 "Dr. Seydou Traore",
                 "DOCTOR",
-                PATIENT_USER_ID,
+                seedPatientUserId,
                 "Fatou Ouedraogo",
                 "PATIENT",
-                UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"),
+                seedPatientId,
                 "Résultats de votre analyse et consignes",
                 "Bonjour Mme Ouedraogo, votre goutte épaisse confirme un paludisme débutant. Commencez le traitement prescrit immédiatement et hydratez-vous abondamment.",
                 "URGENT",
@@ -216,7 +217,7 @@ public class MessagingNotificationService {
 
         // Notifications de départ pour le médecin
         dispatchNotification(
-                DOCTOR_USER_ID,
+                seedDoctorUserId,
                 "DOCTOR",
                 "CRITICAL_LAB_ALERT",
                 "CRITICAL",
@@ -224,12 +225,12 @@ public class MessagingNotificationService {
                 "Goutte épaisse positive (12 500 trophozoïtes/µL). Veuillez ajuster la prescription.",
                 "LabOrder",
                 "LAB-2026-0042",
-                HOSPITAL_TENANT
+                seedHospitalTenant
         );
 
         // Notification de rappel de rendez-vous pour la patiente
         dispatchNotification(
-                PATIENT_USER_ID,
+                seedPatientUserId,
                 "PATIENT",
                 "APPOINTMENT_REMINDER",
                 "INFO",
@@ -237,12 +238,12 @@ public class MessagingNotificationService {
                 "Votre rendez-vous vidéo avec le Dr Seydou Traore est prévu le 24 octobre à 10h00.",
                 "Appointment",
                 "c1111111-2222-3333-4444-555555555551",
-                HOSPITAL_TENANT
+                seedHospitalTenant
         );
 
         // Notification de colis prêt pour la patiente
         dispatchNotification(
-                PATIENT_USER_ID,
+                seedPatientUserId,
                 "PATIENT",
                 "DELIVERY_UPDATE",
                 "INFO",
@@ -250,7 +251,7 @@ public class MessagingNotificationService {
                 "Le livreur a pris en charge votre colis scellé en pharmacie. Préparez votre code secret OTP.",
                 "DeliveryMission",
                 "DEL-2026-0001",
-                HOSPITAL_TENANT
+                seedHospitalTenant
         );
     }
 }

@@ -24,9 +24,6 @@ public class EpidemiologyService {
     private final ClinicalService clinicalService;
     private final List<EpidemiologicalCase> cases = new CopyOnWriteArrayList<>();
 
-    private static final UUID HOSPITAL_TENANT = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
-    private static final UUID DOCTOR_TRAORE_ID = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");
-
     // Seuils d'alerte épidémique hebdomadaires par pathologie
     private static final Map<String, Integer> EPIDEMIC_WEEKLY_THRESHOLDS = Map.of(
             "MALARIA_FALCIPARUM", 50,
@@ -56,12 +53,18 @@ public class EpidemiologyService {
         if (diseaseCode == null || region == null || district == null) {
             throw new IllegalArgumentException("Pathologie, région et district requis pour la déclaration épidémiologique.");
         }
+        if (tenantId == null) {
+            throw new IllegalArgumentException("L'identifiant de la structure sanitaire déclarante est requis.");
+        }
+        if (reportedBy == null) {
+            throw new IllegalArgumentException("L'identifiant du professionnel déclarant est requis.");
+        }
 
         String dhis2Id = "DHIS2-BF-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
         EpidemiologicalCase newCase = new EpidemiologicalCase(
                 UUID.randomUUID(),
-                tenantId != null ? tenantId : HOSPITAL_TENANT,
+                tenantId,
                 region,
                 district,
                 diseaseCode.toUpperCase(),
@@ -71,7 +74,7 @@ public class EpidemiologyService {
                 patientGender != null ? patientGender.toUpperCase() : "U",
                 outcome != null ? outcome.toUpperCase() : "UNDER_TREATMENT",
                 Instant.now(),
-                reportedBy != null ? reportedBy : DOCTOR_TRAORE_ID,
+                reportedBy,
                 dhis2Id
         );
 
@@ -166,34 +169,37 @@ public class EpidemiologyService {
     }
 
     private void initSeedEpidemiologyData() {
+        UUID seedHospitalTenant = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
+        UUID seedDoctorId = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");
+
         // Paludisme (Zone Centre / Ouagadougou)
         cases.add(new EpidemiologicalCase(
-                UUID.randomUUID(), HOSPITAL_TENANT, "Centre", "Baskuy",
+                UUID.randomUUID(), seedHospitalTenant, "Centre", "Baskuy",
                 "MALARIA_FALCIPARUM", "Paludisme à Plasmodium falciparum", "LAB_CONFIRMED",
                 32, "F", "UNDER_TREATMENT", Instant.now().minus(2, ChronoUnit.DAYS),
-                DOCTOR_TRAORE_ID, "DHIS2-BF-MAL-001"
+                seedDoctorId, "DHIS2-BF-MAL-001"
         ));
         cases.add(new EpidemiologicalCase(
-                UUID.randomUUID(), HOSPITAL_TENANT, "Centre", "Bogodogo",
+                UUID.randomUUID(), seedHospitalTenant, "Centre", "Bogodogo",
                 "MALARIA_FALCIPARUM", "Paludisme grave de l'enfant", "LAB_CONFIRMED",
                 4, "M", "HOSPITALIZED", Instant.now().minus(1, ChronoUnit.DAYS),
-                DOCTOR_TRAORE_ID, "DHIS2-BF-MAL-002"
+                seedDoctorId, "DHIS2-BF-MAL-002"
         ));
 
         // Dengue (Hauts-Bassins / Bobo-Dioulasso)
         cases.add(new EpidemiologicalCase(
-                UUID.randomUUID(), HOSPITAL_TENANT, "Hauts-Bassins", "Dafra",
+                UUID.randomUUID(), seedHospitalTenant, "Hauts-Bassins", "Dafra",
                 "DENGUE", "Dengue à forme classique", "RAPID_TEST",
                 28, "M", "UNDER_TREATMENT", Instant.now().minus(3, ChronoUnit.DAYS),
-                DOCTOR_TRAORE_ID, "DHIS2-BF-DEN-001"
+                seedDoctorId, "DHIS2-BF-DEN-001"
         ));
 
         // Méningite (Sahel / Dori)
         cases.add(new EpidemiologicalCase(
-                UUID.randomUUID(), HOSPITAL_TENANT, "Sahel", "Dori",
+                UUID.randomUUID(), seedHospitalTenant, "Sahel", "Dori",
                 "MENINGITIS", "Méningite à Méningocoque A/C", "CLINICAL_SUSPICION",
                 14, "F", "HOSPITALIZED", Instant.now().minus(4, ChronoUnit.DAYS),
-                DOCTOR_TRAORE_ID, "DHIS2-BF-MEN-001"
+                seedDoctorId, "DHIS2-BF-MEN-001"
         ));
     }
 }

@@ -22,8 +22,7 @@ import com.medscan.security.tenant.TenantRegistry;
  */
 public class ClinicalService {
 
-    private static final UUID PLATFORM_TENANT = TenantRegistry.PLATFORM_TENANT_ID;
-
+    private final TenantRegistry tenantRegistry;
     private final Map<UUID, Patient> patientsById = new ConcurrentHashMap<>();
     private final Map<UUID, List<VitalSigns>> vitalsByPatientId = new ConcurrentHashMap<>();
     private final Map<UUID, List<Consultation>> consultationsByPatientId = new ConcurrentHashMap<>();
@@ -33,6 +32,11 @@ public class ClinicalService {
     private final List<AuditEvent> auditLogs = new CopyOnWriteArrayList<>();
 
     public ClinicalService() {
+        this(new TenantRegistry());
+    }
+
+    public ClinicalService(TenantRegistry tenantRegistry) {
+        this.tenantRegistry = (tenantRegistry != null) ? tenantRegistry : new TenantRegistry();
         initSeedData();
     }
 
@@ -41,7 +45,7 @@ public class ClinicalService {
     // ==========================================
 
     public List<Patient> searchPatients(UUID tenantId, String query, Set<String> roles) {
-        boolean canSeeAll = roles.contains("SUPER_ADMIN") || roles.contains("AUDITOR") || PLATFORM_TENANT.equals(tenantId);
+        boolean canSeeAll = roles.contains("SUPER_ADMIN") || roles.contains("AUDITOR") || tenantRegistry.isPlatformTenant(tenantId);
 
         return patientsById.values().stream()
                 .filter(p -> canSeeAll || p.tenantId().equals(tenantId))
@@ -76,7 +80,7 @@ public class ClinicalService {
         }
 
         // 2. Super Admin et Auditeur de la plateforme
-        if (roles.contains("SUPER_ADMIN") || roles.contains("AUDITOR") || PLATFORM_TENANT.equals(requesterTenantId)) {
+        if (roles.contains("SUPER_ADMIN") || roles.contains("AUDITOR") || tenantRegistry.isPlatformTenant(requesterTenantId)) {
             return true;
         }
 
@@ -341,7 +345,7 @@ public class ClinicalService {
 
     public List<AuditEvent> getAuditLogs(UUID requesterTenantId, boolean isPlatformAuditor, int limit) {
         return auditLogs.stream()
-                .filter(ev -> isPlatformAuditor || PLATFORM_TENANT.equals(requesterTenantId) || ev.tenantId().equals(requesterTenantId))
+                .filter(ev -> isPlatformAuditor || tenantRegistry.isPlatformTenant(requesterTenantId) || ev.tenantId().equals(requesterTenantId))
                 .limit(limit > 0 ? limit : 50)
                 .collect(Collectors.toList());
     }
@@ -458,7 +462,7 @@ public class ClinicalService {
 
         // Audit de démarrage
         logAudit(UUID.fromString("f70a1335-b31f-4193-88ef-ce3460f3d029"),
-                "system-bootstrap", "SYSTEM", PLATFORM_TENANT,
+                "system-bootstrap", "SYSTEM", null,
                 "PLATFORM_BOOTSTRAP", "System", "MedScan-v1", "SUCCESS",
                 "Initialisation du registre clinique MedScan Enterprise avec données de référence.");
     }

@@ -17,8 +17,6 @@ import com.medscan.clinical.ClinicalService;
  */
 public class ImagingService {
 
-    private static final UUID PLATFORM_TENANT = UUID.fromString("b47c7913-35d0-43e3-8ec1-5614dec9ffcd");
-
     private final Map<UUID, ImagingStudy> studiesById = new ConcurrentHashMap<>();
     private final AiInferenceGateway aiEngine;
     private final ClinicalService clinicalService;
@@ -34,7 +32,7 @@ public class ImagingService {
     }
 
     public List<ImagingStudy> searchStudies(UUID tenantId, UUID patientId, Set<String> roles) {
-        boolean canSeeAll = roles.contains("SUPER_ADMIN") || roles.contains("AUDITOR") || PLATFORM_TENANT.equals(tenantId);
+        boolean canSeeAll = roles.contains("SUPER_ADMIN") || roles.contains("AUDITOR") || tenantId == null;
 
         return studiesById.values().stream()
                 .filter(s -> canSeeAll || s.tenantId().equals(tenantId))

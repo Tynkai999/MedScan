@@ -32,12 +32,6 @@ public class LabService {
     private final Map<UUID, List<LabOrder>> ordersByPatientId = new ConcurrentHashMap<>();
     private final AtomicInteger orderSequence = new AtomicInteger(100);
 
-    private static final UUID HOSPITAL_TENANT = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
-    private static final UUID PATIENT_FATOU_ID = UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e");
-    private static final UUID PATIENT_IBRAHIM_ID = UUID.fromString("dababb25-8dc9-402c-b527-15d9a4b1f380");
-    private static final UUID DOCTOR_TRAORE_ID = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");
-    private static final UUID LAB_TECH_ID = UUID.fromString("1e4a2c5b-8d3f-4e6a-9b7c-0a1d2e3f4a5b");
-
     public LabService(ClinicalService clinicalService) {
         this.clinicalService = (clinicalService != null) ? clinicalService : new ClinicalService();
         initSeedLabOrders();
@@ -60,15 +54,23 @@ public class LabService {
         Patient patient = clinicalService.findPatientById(patientId)
                 .orElseThrow(() -> new IllegalArgumentException("Patient introuvable: " + patientId));
 
+        UUID resolvedTenantId = prescriberTenantId != null ? prescriberTenantId : patient.tenantId();
+        if (resolvedTenantId == null) {
+            throw new IllegalArgumentException("L'identifiant de l'établissement prescripteur est requis.");
+        }
+        if (prescriberId == null) {
+            throw new IllegalArgumentException("L'identifiant du médecin prescripteur est requis.");
+        }
+
         String code = "LAB-2026-" + String.format("%04d", orderSequence.incrementAndGet());
 
         LabOrder order = new LabOrder(
                 UUID.randomUUID(),
                 code,
-                prescriberTenantId != null ? prescriberTenantId : HOSPITAL_TENANT,
+                resolvedTenantId,
                 patientId,
                 patient.fullName(),
-                prescriberId != null ? prescriberId : DOCTOR_TRAORE_ID,
+                prescriberId,
                 prescriberName != null ? prescriberName : "Médecin Prescripteur",
                 null,
                 null,
@@ -261,6 +263,12 @@ public class LabService {
     }
 
     private void initSeedLabOrders() {
+        UUID seedHospitalTenant = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
+        UUID seedFatouId = UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e");
+        UUID seedIbrahimId = UUID.fromString("dababb25-8dc9-402c-b527-15d9a4b1f380");
+        UUID seedDoctorId = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");
+        UUID seedLabTechId = UUID.fromString("1e4a2c5b-8d3f-4e6a-9b7c-0a1d2e3f4a5b");
+
         // 1. Recherche Paludisme (Goutte épaisse & TDR) pour Fatou Ouedraogo
         UUID order1Id = UUID.fromString("b1111111-2222-3333-4444-555555555551");
         List<LabResultItem> results1 = List.of(
@@ -275,12 +283,12 @@ public class LabService {
         LabOrder o1 = new LabOrder(
                 order1Id,
                 "LAB-2026-0042",
-                HOSPITAL_TENANT,
-                PATIENT_FATOU_ID,
+                seedHospitalTenant,
+                seedFatouId,
                 "Fatou Ouedraogo",
-                DOCTOR_TRAORE_ID,
+                seedDoctorId,
                 "Dr. Seydou Traore",
-                LAB_TECH_ID,
+                seedLabTechId,
                 "Tech. Ousmane Sanou",
                 "PARASITOLOGY",
                 "Goutte Épaisse & Test Rapide Paludisme (TDR)",
@@ -309,12 +317,12 @@ public class LabService {
         LabOrder o2 = new LabOrder(
                 order2Id,
                 "LAB-2026-0043",
-                HOSPITAL_TENANT,
-                PATIENT_IBRAHIM_ID,
+                seedHospitalTenant,
+                seedIbrahimId,
                 "Ibrahim Compaore",
-                DOCTOR_TRAORE_ID,
+                seedDoctorId,
                 "Dr. Seydou Traore",
-                LAB_TECH_ID,
+                seedLabTechId,
                 "Tech. Ousmane Sanou",
                 "BIOCHEMISTRY",
                 "Bilan Métabolique & Surveillance Diabète",
@@ -322,7 +330,7 @@ public class LabService {
                 "VALIDATED",
                 "Suivi trimestriel Diabète Type 2 & HTA",
                 Instant.now().minus(5, ChronoUnit.DAYS),
-                Instant.now().minus(5, ChronoUnit.DAYS).plus(3, ChronoUnit.HOURS),
+                Instant.now().minus(5, ChronoUnit.DAYS).plus(4, ChronoUnit.HOURS),
                 results2,
                 false,
                 Instant.now().minus(5, ChronoUnit.DAYS)

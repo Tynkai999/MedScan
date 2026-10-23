@@ -27,11 +27,6 @@ public class AppointmentService {
     private final Map<UUID, List<Appointment>> appointmentsByPatientId = new ConcurrentHashMap<>();
     private final Map<UUID, List<Appointment>> appointmentsByPractitionerId = new ConcurrentHashMap<>();
 
-    private static final UUID HOSPITAL_TENANT = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
-    private static final UUID PATIENT_FATOU_ID = UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e");
-    private static final UUID DOCTOR_TRAORE_ID = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");
-    private static final UUID LAB_TECH_ID = UUID.fromString("1e4a2c5b-8d3f-4e6a-9b7c-0a1d2e3f4a5b");
-
     public AppointmentService(ClinicalService clinicalService) {
         this.clinicalService = (clinicalService != null) ? clinicalService : new ClinicalService();
         initSeedAppointments();
@@ -55,6 +50,11 @@ public class AppointmentService {
         Patient patient = clinicalService.findPatientById(patientId)
                 .orElseThrow(() -> new IllegalArgumentException("Patient introuvable: " + patientId));
 
+        UUID resolvedTenantId = actorTenantId != null ? actorTenantId : patient.tenantId();
+        if (resolvedTenantId == null) {
+            throw new IllegalArgumentException("L'identifiant de l'établissement (tenantId) est requis pour enregistrer un rendez-vous.");
+        }
+
         String roomToken = null;
         String joinUrl = null;
         if ("TELECONSULTATION".equalsIgnoreCase(appointmentType)) {
@@ -64,7 +64,7 @@ public class AppointmentService {
 
         Appointment appt = new Appointment(
                 UUID.randomUUID(),
-                actorTenantId != null ? actorTenantId : HOSPITAL_TENANT,
+                resolvedTenantId,
                 patientId,
                 patient.fullName(),
                 practitionerId,
@@ -221,13 +221,18 @@ public class AppointmentService {
     }
 
     private void initSeedAppointments() {
+        UUID seedHospitalTenant = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
+        UUID seedPatientId = UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e");
+        UUID seedDoctorId = UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0");
+        UUID seedLabTechId = UUID.fromString("1e4a2c5b-8d3f-4e6a-9b7c-0a1d2e3f4a5b");
+
         // 1. Téléconsultation de suivi Fatou Ouedraogo avec Dr Seydou Traore
         Appointment a1 = new Appointment(
                 UUID.fromString("c1111111-2222-3333-4444-555555555551"),
-                HOSPITAL_TENANT,
-                PATIENT_FATOU_ID,
+                seedHospitalTenant,
+                seedPatientId,
                 "Fatou Ouedraogo",
-                DOCTOR_TRAORE_ID,
+                seedDoctorId,
                 "Dr. Seydou Traore",
                 "DOCTOR",
                 "TELECONSULTATION",
@@ -246,10 +251,10 @@ public class AppointmentService {
         // 2. Rendez-vous de prélèvement Laboratoire pour analyse sanguine
         Appointment a2 = new Appointment(
                 UUID.fromString("c1111111-2222-3333-4444-555555555552"),
-                HOSPITAL_TENANT,
-                PATIENT_FATOU_ID,
+                seedHospitalTenant,
+                seedPatientId,
                 "Fatou Ouedraogo",
-                LAB_TECH_ID,
+                seedLabTechId,
                 "Tech. Ousmane Sanou",
                 "LAB_TECHNICIAN",
                 "LAB_ANALYSIS",

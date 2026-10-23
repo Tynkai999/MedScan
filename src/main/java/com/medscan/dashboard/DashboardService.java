@@ -32,7 +32,6 @@ import com.medscan.security.tenant.TenantRegistry;
  */
 public class DashboardService {
 
-    private static final UUID PLATFORM_TENANT = TenantRegistry.PLATFORM_TENANT_ID;
     private static final TenantRegistry DEFAULT_TENANT_REGISTRY = new TenantRegistry();
 
     private final ClinicalService clinicalService;
@@ -69,7 +68,7 @@ public class DashboardService {
 
     public ActorDashboardStats getDashboardStats(UUID userId, String username, String role, UUID tenantId, String tenantCode) {
         String effectiveRole = (role != null) ? role.toUpperCase() : "DOCTOR";
-        boolean isPlatformLevel = "SUPER_ADMIN".equals(effectiveRole) || "AUDITOR".equals(effectiveRole) || PLATFORM_TENANT.equals(tenantId);
+        boolean isPlatformLevel = "SUPER_ADMIN".equals(effectiveRole) || "AUDITOR".equals(effectiveRole) || tenantRegistry.isPlatformTenant(tenantId);
 
         Map<String, Object> kpis = new LinkedHashMap<>();
         List<CriticalAlert> criticalAlerts = new ArrayList<>();

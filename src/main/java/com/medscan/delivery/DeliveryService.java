@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import com.medscan.clinical.ClinicalService;
+import com.medscan.security.tenant.Tenant;
 import com.medscan.security.tenant.TenantRegistry;
 
 /**
@@ -22,9 +23,7 @@ import com.medscan.security.tenant.TenantRegistry;
  */
 public class DeliveryService {
 
-    public static final UUID LOGISTICS_TENANT_ID = UUID.fromString("ddfd4bda-a3a7-401a-a701-3ef502072705"); // EXPRESS_MEDIC
-    public static final UUID PHARMACY_TENANT_ID = UUID.fromString("82961773-9273-4fef-bdd9-01adcdd51d89"); // PHARMA_CENTRALE
-    public static final UUID CHU_TENANT_ID = UUID.fromString("e2241595-e068-46f7-8e82-ab2b9dd3c18a");
+
 
     private final Map<UUID, DeliveryOrder> deliveriesById = new ConcurrentHashMap<>();
     private final Map<String, DeliveryOrder> deliveriesByCode = new ConcurrentHashMap<>();
@@ -78,6 +77,23 @@ public class DeliveryService {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(24, ChronoUnit.HOURS);
 
+        if (patientId == null) {
+            throw new IllegalArgumentException("L'identifiant du patient est obligatoire pour créer une livraison.");
+        }
+        if (pharmacyTenantId == null) {
+            throw new IllegalArgumentException("L'identifiant de la structure pharmaceutique est obligatoire.");
+        }
+
+        UUID resolvedLogisticsTenant = tenantRegistry.listAllTenants().stream()
+                .filter(t -> "LOGISTICS".equalsIgnoreCase(t.type()))
+                .map(Tenant::id)
+                .findFirst()
+                .orElse(actorTenantId != null ? actorTenantId : pharmacyTenantId);
+
+        String resolvedPharmacyName = (pharmacyName != null && !pharmacyName.isBlank())
+                ? pharmacyName
+                : tenantRegistry.resolveTenantDisplayName(pharmacyTenantId);
+
         DeliveryOrder order = new DeliveryOrder(
                 id,
                 code,
@@ -88,9 +104,9 @@ public class DeliveryService {
                 (patientPhone != null && !patientPhone.isBlank()) ? patientPhone : "+226 70 00 00 00",
                 (deliveryAddress != null && !deliveryAddress.isBlank()) ? deliveryAddress : "Adresse patient",
                 (destinationCity != null && !destinationCity.isBlank()) ? destinationCity : "Ouagadougou",
-                (pharmacyTenantId != null) ? pharmacyTenantId : PHARMACY_TENANT_ID,
-                (pharmacyName != null) ? pharmacyName : "Grande Pharmacie Centrale",
-                LOGISTICS_TENANT_ID,
+                pharmacyTenantId,
+                resolvedPharmacyName,
+                resolvedLogisticsTenant,
                 null,
                 null,
                 DeliveryStatus.CREATED,
@@ -358,6 +374,8 @@ public class DeliveryService {
     // ==========================================
 
     private void initSeedDeliveries() {
+        UUID seedPharmacyTenantId = UUID.fromString("82961773-9273-4fef-bdd9-01adcdd51d89");
+        UUID seedLogisticsTenantId = UUID.fromString("ddfd4bda-a3a7-401a-a701-3ef502072705");
         UUID pFatouId = UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e");
         UUID courierId = UUID.fromString("295a0bc4-ff23-455b-80df-8b21c43d9241"); // Ibrahim Zongo
 
@@ -378,9 +396,9 @@ public class DeliveryService {
                 "+226 70 12 34 56",
                 "Quartier Ouaga 2000, Villa 412, Rue des Ambassades",
                 "Ouagadougou",
-                PHARMACY_TENANT_ID,
+                seedPharmacyTenantId,
                 "Grande Pharmacie Centrale & Officine Avenir",
-                LOGISTICS_TENANT_ID,
+                seedLogisticsTenantId,
                 courierId,
                 "Ibrahim Zongo",
                 DeliveryStatus.IN_TRANSIT,
@@ -418,9 +436,9 @@ public class DeliveryService {
                 "+226 70 12 34 56",
                 "Quartier Ouaga 2000, Villa 412, Rue des Ambassades",
                 "Ouagadougou",
-                PHARMACY_TENANT_ID,
+                seedPharmacyTenantId,
                 "Grande Pharmacie Centrale & Officine Avenir",
-                LOGISTICS_TENANT_ID,
+                seedLogisticsTenantId,
                 null,
                 null,
                 DeliveryStatus.CREATED,
@@ -454,9 +472,9 @@ public class DeliveryService {
                 "+226 70 12 34 56",
                 "Quartier Ouaga 2000, Villa 412, Rue des Ambassades",
                 "Ouagadougou",
-                PHARMACY_TENANT_ID,
+                seedPharmacyTenantId,
                 "Grande Pharmacie Centrale & Officine Avenir",
-                LOGISTICS_TENANT_ID,
+                seedLogisticsTenantId,
                 courierId,
                 "Ibrahim Zongo",
                 DeliveryStatus.DELIVERED,

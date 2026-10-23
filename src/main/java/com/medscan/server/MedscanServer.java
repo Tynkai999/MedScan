@@ -1353,14 +1353,8 @@ public class MedscanServer {
             }
 
             if (patientId == null) {
-                Optional<Patient> pFirst = clinicalService.findPatientById(UUID.fromString("99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e"));
-                if (pFirst.isPresent()) {
-                    patientId = pFirst.get().id();
-                    if (patientName == null || patientName.isBlank()) patientName = pFirst.get().fullName();
-                    if (patientPhone == null || patientPhone.isBlank()) patientPhone = pFirst.get().phone();
-                } else {
-                    patientId = UUID.randomUUID();
-                }
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"L'identifiant du patient (patientId) est requis pour créer un bon de livraison.\"}");
+                return;
             }
 
             if (rawPharmacyTenantId != null && !rawPharmacyTenantId.isBlank()) {
@@ -1369,7 +1363,14 @@ public class MedscanServer {
                 } catch (IllegalArgumentException ignored) {}
             }
             if (pharmacyTenantId == null) {
-                pharmacyTenantId = principal.isUserInRole("PHARMACIST") ? principal.getTenantId() : DeliveryService.PHARMACY_TENANT_ID;
+                if (principal.isUserInRole("PHARMACIST") && principal.getTenantId() != null) {
+                    pharmacyTenantId = principal.getTenantId();
+                } else if (principal.getTenantId() != null) {
+                    pharmacyTenantId = principal.getTenantId();
+                } else {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"L'identifiant de la structure pharmaceutique (pharmacyTenantId) est requis.\"}");
+                    return;
+                }
             }
 
             String role = principal.getRoles().isEmpty() ? "PHARMACIST" : principal.getRoles().iterator().next();

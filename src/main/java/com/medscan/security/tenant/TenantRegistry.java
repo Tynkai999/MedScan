@@ -159,6 +159,20 @@ public class TenantRegistry {
     }
 
     /**
+     * Détermine dynamiquement si un tenant correspond au système central ou à la plateforme MedScan.
+     */
+    public boolean isPlatformTenant(UUID tenantId) {
+        if (tenantId == null) {
+            return true;
+        }
+        Tenant t = tenantsById.get(tenantId);
+        if (t != null) {
+            return "PLATFORM".equalsIgnoreCase(t.type()) || "MEDSCAN_SYS".equalsIgnoreCase(t.code()) || "MEDSCAN_PLATFORM".equalsIgnoreCase(t.code());
+        }
+        return false;
+    }
+
+    /**
      * Résout le libellé complet affichable pour les tableaux de bord et dossiers
      */
     public String resolveTenantDisplayName(UUID tenantId) {
