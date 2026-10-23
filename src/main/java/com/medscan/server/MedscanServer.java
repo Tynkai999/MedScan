@@ -80,6 +80,16 @@ import com.medscan.messaging.ClinicalMessage;
 import com.medscan.messaging.InAppNotification;
 import com.medscan.messaging.MessagingJsonMapper;
 import com.medscan.messaging.MessagingNotificationService;
+import com.medscan.referral.MedicalReferral;
+import com.medscan.referral.ReferralJsonMapper;
+import com.medscan.referral.ReferralService;
+import com.medscan.certificate.CertificateJsonMapper;
+import com.medscan.certificate.CertificateService;
+import com.medscan.certificate.HospitalSeal;
+import com.medscan.certificate.MedicalCertificate;
+import com.medscan.grievance.GrievanceJsonMapper;
+import com.medscan.grievance.GrievanceService;
+import com.medscan.grievance.PatientGrievance;
 import com.medscan.sync.EmergencyCard;
 import com.medscan.sync.SyncBatchRequest;
 import com.medscan.sync.SyncBatchResponse;
@@ -118,6 +128,9 @@ public class MedscanServer {
     private final LabService labService;
     private final EpidemiologyService epidemiologyService;
     private final MessagingNotificationService messagingNotificationService;
+    private final ReferralService referralService;
+    private final CertificateService certificateService;
+    private final GrievanceService grievanceService;
 
     public MedscanServer(int port) {
         this.port = port;
@@ -137,6 +150,9 @@ public class MedscanServer {
         this.labService = new LabService(clinicalService);
         this.epidemiologyService = new EpidemiologyService(clinicalService);
         this.messagingNotificationService = new MessagingNotificationService(clinicalService);
+        this.referralService = new ReferralService(clinicalService, tenantRegistry, messagingNotificationService);
+        this.certificateService = new CertificateService(clinicalService, tenantRegistry, messagingNotificationService);
+        this.grievanceService = new GrievanceService(clinicalService, tenantRegistry, messagingNotificationService, userRegistry);
     }
 
     public AppointmentService getAppointmentService() {
@@ -153,6 +169,18 @@ public class MedscanServer {
 
     public MessagingNotificationService getMessagingNotificationService() {
         return messagingNotificationService;
+    }
+
+    public ReferralService getReferralService() {
+        return referralService;
+    }
+
+    public CertificateService getCertificateService() {
+        return certificateService;
+    }
+
+    public GrievanceService getGrievanceService() {
+        return grievanceService;
     }
 
     public DeliveryService getDeliveryService() {
@@ -210,6 +238,9 @@ public class MedscanServer {
         System.out.println("  Profil (/me)    : GET  http://localhost:" + activePort + CONTEXT_PATH + "/v1/auth/me");
         System.out.println("  Portail Médecin : GET  http://localhost:" + activePort + CONTEXT_PATH + "/v1/portal/doctor");
         System.out.println("  Portail Patient : GET  http://localhost:" + activePort + CONTEXT_PATH + "/v1/portal/patient");
+        System.out.println("  MOD-16 Transfert: POST http://localhost:" + activePort + CONTEXT_PATH + "/v1/referrals");
+        System.out.println("  MOD-17 Cachet   : POST http://localhost:" + activePort + CONTEXT_PATH + "/v1/certificates");
+        System.out.println("  MOD-18 Avis/Plt : POST http://localhost:" + activePort + CONTEXT_PATH + "/v1/grievances");
         System.out.println("================================================================================");
         System.out.println("  Tolérance URLs  : Accepte /v1/..., /medscan/api/v1/... et les doublons Postman");
         System.out.println("================================================================================");
@@ -373,6 +404,29 @@ public class MedscanServer {
                     handleNotificationMarkAllRead(exchange);
                 } else if (subPath.startsWith("/v1/notifications/")) {
                     handleNotificationAction(exchange, subPath.substring("/v1/notifications/".length()));
+                // MOD-16 : Orientations & Transferts Médicaux
+                } else if (subPath.equals("/v1/referrals") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListReferrals(exchange);
+                } else if (subPath.equals("/v1/referrals") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleCreateReferral(exchange);
+                } else if (subPath.startsWith("/v1/referrals/")) {
+                    handleReferralAction(exchange, subPath.substring("/v1/referrals/".length()));
+                // MOD-17 : Certificats Médicaux & Cachet d'Hôpital
+                } else if (subPath.equals("/v1/certificates") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListCertificates(exchange);
+                } else if (subPath.equals("/v1/certificates") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleIssueCertificate(exchange);
+                } else if (subPath.startsWith("/v1/certificates/verify") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleVerifyCertificate(exchange);
+                } else if (subPath.startsWith("/v1/certificates/")) {
+                    handleCertificateAction(exchange, subPath.substring("/v1/certificates/".length()));
+                // MOD-18 : Réclamations & Avis Patients pour Direction Hospitalière
+                } else if (subPath.equals("/v1/grievances") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListGrievances(exchange);
+                } else if (subPath.equals("/v1/grievances") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleSubmitGrievance(exchange);
+                } else if (subPath.startsWith("/v1/grievances/")) {
+                    handleGrievanceAction(exchange, subPath.substring("/v1/grievances/".length()));
                 } else {
                     sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Point d'accès introuvable: " + subPath + "\"}");
                 }
@@ -2500,6 +2554,490 @@ public class MedscanServer {
                 }
             } else {
                 sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode non supportée.\"}");
+            }
+        }
+
+        // ==========================================
+        // HANDLERS MOD-16 : ORIENTATIONS & TRANSFERTS MÉDICAUX
+        // ==========================================
+
+        private void handleListReferrals(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String query = exchange.getRequestURI().getQuery();
+            UUID patientParam = null;
+            UUID doctorParam = null;
+            UUID tenantParam = null;
+            Boolean incomingOnly = null;
+
+            if (query != null && !query.isBlank()) {
+                for (String param : query.split("&")) {
+                    String[] kv = param.split("=");
+                    if (kv.length == 2) {
+                        try {
+                            if ("patientId".equalsIgnoreCase(kv[0])) patientParam = UUID.fromString(kv[1]);
+                            else if ("doctorId".equalsIgnoreCase(kv[0])) doctorParam = UUID.fromString(kv[1]);
+                            else if ("tenantId".equalsIgnoreCase(kv[0])) tenantParam = UUID.fromString(kv[1]);
+                            else if ("incomingOnly".equalsIgnoreCase(kv[0])) incomingOnly = Boolean.parseBoolean(kv[1]);
+                        } catch (IllegalArgumentException ignored) {}
+                    }
+                }
+            }
+
+            if (patientParam == null && principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (pOpt.isPresent()) patientParam = pOpt.get().id();
+            }
+
+            if (tenantParam == null && !principal.isUserInRole("SUPER_ADMIN") && !principal.isUserInRole("PATIENT")) {
+                tenantParam = principal.getTenantId();
+            }
+
+            List<MedicalReferral> list = referralService.listReferrals(tenantParam, patientParam, doctorParam, incomingOnly);
+            sendJson(exchange, 200, ReferralJsonMapper.listToJson(list));
+        }
+
+        private void handleCreateReferral(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String patientIdStr = JsonHelper.getString(body, "patientId");
+            String targetTenantIdStr = JsonHelper.getString(body, "targetTenantId");
+            String sourceDepartment = JsonHelper.getString(body, "sourceDepartment");
+            String targetDepartment = JsonHelper.getString(body, "targetDepartment");
+            String targetDoctorIdStr = JsonHelper.getString(body, "targetDoctorId");
+            String targetDoctorName = JsonHelper.getString(body, "targetDoctorName");
+            String reason = JsonHelper.getString(body, "reason");
+            String priority = JsonHelper.getString(body, "priority");
+            String clinicalSummary = JsonHelper.getString(body, "clinicalSummary");
+            String doctorLicense = JsonHelper.getString(body, "doctorLicenseNumber");
+
+            if (patientIdStr == null || patientIdStr.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"L'identifiant du patient (patientId) est requis.\"}");
+                return;
+            }
+            if (targetDepartment == null || targetDepartment.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"Le service ou la spécialité cible (targetDepartment) est requis.\"}");
+                return;
+            }
+            if (reason == null || reason.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"Le motif de l'orientation (reason) est requis.\"}");
+                return;
+            }
+
+            UUID patientId = UUID.fromString(patientIdStr.trim());
+            UUID targetTenantId = (targetTenantIdStr != null && !targetTenantIdStr.isBlank()) ? UUID.fromString(targetTenantIdStr.trim()) : null;
+            UUID targetDoctorId = (targetDoctorIdStr != null && !targetDoctorIdStr.isBlank()) ? UUID.fromString(targetDoctorIdStr.trim()) : null;
+            UUID sourceTenantId = principal.getTenantId();
+            if (sourceTenantId == null) {
+                Patient p = clinicalService.findPatientById(patientId).orElse(null);
+                sourceTenantId = (p != null) ? p.tenantId() : null;
+            }
+
+            try {
+                MedicalReferral ref = referralService.createReferral(
+                        patientId,
+                        principal.getUserId(),
+                        principal.getName(),
+                        doctorLicense != null ? doctorLicense : "OM-BF-REF",
+                        sourceTenantId,
+                        sourceDepartment != null ? sourceDepartment : "Médecine Générale",
+                        targetTenantId,
+                        targetDepartment,
+                        targetDoctorId,
+                        targetDoctorName,
+                        reason,
+                        priority != null ? priority : "ROUTINE",
+                        clinicalSummary
+                );
+                sendJson(exchange, 201, ReferralJsonMapper.referralToJson(ref));
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleReferralAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String cleanTail = tail.startsWith("/") ? tail.substring(1) : tail;
+            String method = exchange.getRequestMethod();
+
+            if ("GET".equalsIgnoreCase(method)) {
+                Optional<MedicalReferral> opt = Optional.empty();
+                try {
+                    opt = referralService.findReferralById(UUID.fromString(cleanTail));
+                } catch (IllegalArgumentException ignored) {
+                    opt = referralService.findReferralByCode(cleanTail);
+                }
+                if (opt.isPresent()) {
+                    sendJson(exchange, 200, ReferralJsonMapper.referralToJson(opt.get()));
+                } else {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Orientation médicale introuvable.\"}");
+                }
+            } else if ("PUT".equalsIgnoreCase(method)) {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                UUID refId = null;
+                String action = "";
+
+                if (cleanTail.contains("/accept")) {
+                    refId = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/accept")));
+                    action = "ACCEPTED";
+                } else if (cleanTail.contains("/reject")) {
+                    refId = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/reject")));
+                    action = "REJECTED";
+                } else if (cleanTail.contains("/complete")) {
+                    refId = UUID.fromString(cleanTail.substring(0, cleanTail.indexOf("/complete")));
+                    action = "COMPLETED";
+                }
+
+                if (refId == null) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Action inconnue\",\"status\":400,\"detail\":\"Action sur l'orientation non reconnue.\"}");
+                    return;
+                }
+
+                String rejectionReason = JsonHelper.getString(body, "reason");
+                String role = principal.getRoles().isEmpty() ? "DOCTOR" : principal.getRoles().iterator().next();
+
+                try {
+                    MedicalReferral updated = referralService.updateReferralStatus(
+                            refId, action, rejectionReason, principal.getUserId(), principal.getName(), role, principal.getTenantId()
+                    );
+                    sendJson(exchange, 200, ReferralJsonMapper.referralToJson(updated));
+                } catch (Exception e) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+            } else {
+                sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode non supportée.\"}");
+            }
+        }
+
+        // ==========================================
+        // HANDLERS MOD-17 : CERTIFICATS MÉDICAUX & CACHET D'HÔPITAL
+        // ==========================================
+
+        private void handleListCertificates(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String query = exchange.getRequestURI().getQuery();
+            UUID patientParam = null;
+            UUID doctorParam = null;
+            UUID tenantParam = null;
+
+            if (query != null && !query.isBlank()) {
+                for (String param : query.split("&")) {
+                    String[] kv = param.split("=");
+                    if (kv.length == 2) {
+                        try {
+                            if ("patientId".equalsIgnoreCase(kv[0])) patientParam = UUID.fromString(kv[1]);
+                            else if ("doctorId".equalsIgnoreCase(kv[0])) doctorParam = UUID.fromString(kv[1]);
+                            else if ("tenantId".equalsIgnoreCase(kv[0])) tenantParam = UUID.fromString(kv[1]);
+                        } catch (IllegalArgumentException ignored) {}
+                    }
+                }
+            }
+
+            if (patientParam == null && principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (pOpt.isPresent()) patientParam = pOpt.get().id();
+            }
+
+            if (tenantParam == null && !principal.isUserInRole("SUPER_ADMIN") && !principal.isUserInRole("PATIENT")) {
+                tenantParam = principal.getTenantId();
+            }
+
+            List<MedicalCertificate> list = certificateService.listCertificates(tenantParam, patientParam, doctorParam);
+            sendJson(exchange, 200, CertificateJsonMapper.listToJson(list));
+        }
+
+        private void handleIssueCertificate(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String patientIdStr = JsonHelper.getString(body, "patientId");
+            String tenantIdStr = JsonHelper.getString(body, "tenantId");
+            String certType = JsonHelper.getString(body, "certificateType");
+            String diagnosisSummary = JsonHelper.getString(body, "diagnosisSummary");
+            String startDateStr = JsonHelper.getString(body, "startDate");
+            Integer durationDays = JsonHelper.getInt(body, "durationDays");
+            String recipientType = JsonHelper.getString(body, "recipientType");
+            String recipientName = JsonHelper.getString(body, "recipientName");
+            String restrictions = JsonHelper.getString(body, "restrictions");
+            String doctorLicense = JsonHelper.getString(body, "doctorLicenseNumber");
+
+            if (patientIdStr == null || patientIdStr.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"L'identifiant du patient (patientId) est requis.\"}");
+                return;
+            }
+
+            UUID patientId = UUID.fromString(patientIdStr.trim());
+            UUID tenantId = (tenantIdStr != null && !tenantIdStr.isBlank()) ? UUID.fromString(tenantIdStr.trim()) : principal.getTenantId();
+            if (tenantId == null) {
+                Patient p = clinicalService.findPatientById(patientId).orElse(null);
+                tenantId = (p != null) ? p.tenantId() : null;
+            }
+
+            Instant startDate = (startDateStr != null && !startDateStr.isBlank()) ? Instant.parse(startDateStr) : Instant.now();
+            int days = (durationDays != null && durationDays > 0) ? durationDays : 3;
+
+            try {
+                MedicalCertificate cert = certificateService.issueCertificate(
+                        patientId,
+                        principal.getUserId(),
+                        principal.getName(),
+                        doctorLicense != null ? doctorLicense : "OM-BF-5412",
+                        tenantId,
+                        certType != null ? certType : "SICK_LEAVE",
+                        diagnosisSummary != null ? diagnosisSummary : "État de santé nécessitant repos médical strict",
+                        startDate,
+                        days,
+                        recipientType != null ? recipientType : "EMPLOYER",
+                        recipientName != null ? recipientName : "Direction des Ressources Humaines / Administration",
+                        restrictions != null ? restrictions : "Repos strict à domicile, cessation de toute activité"
+                );
+                sendJson(exchange, 201, CertificateJsonMapper.certificateToJson(cert));
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleCertificateAction(HttpExchange exchange, String tail) throws IOException {
+            String cleanTail = tail.startsWith("/") ? tail.substring(1) : tail;
+            boolean isDocument = cleanTail.contains("/document");
+            String idOrCode = isDocument ? cleanTail.substring(0, cleanTail.indexOf("/document")) : cleanTail;
+
+            Optional<MedicalCertificate> opt = Optional.empty();
+            try {
+                opt = certificateService.findCertificateById(UUID.fromString(idOrCode));
+            } catch (IllegalArgumentException ignored) {
+                opt = certificateService.findCertificateByCode(idOrCode);
+            }
+
+            if (opt.isEmpty()) {
+                sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Certificat médical introuvable.\"}");
+                return;
+            }
+
+            if (isDocument) {
+                String html = CertificateJsonMapper.renderOfficialPrintableHtml(opt.get());
+                sendHtml(exchange, 200, html);
+            } else {
+                sendJson(exchange, 200, CertificateJsonMapper.certificateToJson(opt.get()));
+            }
+        }
+
+        private void handleVerifyCertificate(HttpExchange exchange) throws IOException {
+            String query = exchange.getRequestURI().getQuery();
+            String code = null;
+            String hash = null;
+            if (query != null && !query.isBlank()) {
+                for (String param : query.split("&")) {
+                    String[] kv = param.split("=");
+                    if (kv.length == 2) {
+                        if ("code".equalsIgnoreCase(kv[0])) code = kv[1];
+                        else if ("hash".equalsIgnoreCase(kv[0])) hash = kv[1];
+                    }
+                }
+            }
+
+            if (code == null || code.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Paramètres manquants\",\"status\":400,\"detail\":\"Le code du document est requis.\"}");
+                return;
+            }
+
+            Optional<MedicalCertificate> opt = certificateService.findCertificateByCode(code);
+            if (opt.isEmpty()) {
+                sendJson(exchange, 404, "{\"valid\":false,\"detail\":\"Document non répertorié dans le registre hospitalier MedScan.\"}");
+                return;
+            }
+
+            MedicalCertificate cert = opt.get();
+            boolean hashMatch = (hash == null || hash.isBlank()) || (cert.hospitalSeal() != null && hash.equalsIgnoreCase(cert.hospitalSeal().verificationHash()));
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("{");
+            sb.append("\"valid\":").append(hashMatch).append(",");
+            sb.append("\"certificateCode\":\"").append(JsonHelper.escape(cert.certificateCode())).append("\",");
+            sb.append("\"certificateType\":\"").append(JsonHelper.escape(cert.certificateType())).append("\",");
+            sb.append("\"hospitalName\":\"").append(JsonHelper.escape(cert.hospitalName())).append("\",");
+            sb.append("\"doctorName\":\"").append(JsonHelper.escape(cert.doctorName())).append("\",");
+            sb.append("\"patientName\":\"").append(JsonHelper.escape(cert.patientName())).append("\",");
+            sb.append("\"durationDays\":").append(cert.durationDays()).append(",");
+            sb.append("\"stampedAt\":\"").append(cert.hospitalSeal() != null ? cert.hospitalSeal().stampedAt() : cert.createdAt()).append("\",");
+            sb.append("\"status\":\"").append(JsonHelper.escape(cert.status())).append("\"");
+            sb.append("}");
+            sendJson(exchange, 200, sb.toString());
+        }
+
+        // ==========================================
+        // HANDLERS MOD-18 : RÉCLAMATIONS & AVIS PATIENTS
+        // ==========================================
+
+        private void handleListGrievances(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String query = exchange.getRequestURI().getQuery();
+            UUID patientParam = null;
+            UUID doctorParam = null;
+            UUID tenantParam = null;
+            String statusFilter = null;
+
+            if (query != null && !query.isBlank()) {
+                for (String param : query.split("&")) {
+                    String[] kv = param.split("=");
+                    if (kv.length == 2) {
+                        try {
+                            if ("patientId".equalsIgnoreCase(kv[0])) patientParam = UUID.fromString(kv[1]);
+                            else if ("doctorId".equalsIgnoreCase(kv[0])) doctorParam = UUID.fromString(kv[1]);
+                            else if ("tenantId".equalsIgnoreCase(kv[0])) tenantParam = UUID.fromString(kv[1]);
+                            else if ("status".equalsIgnoreCase(kv[0])) statusFilter = kv[1];
+                        } catch (IllegalArgumentException ignored) {}
+                    }
+                }
+            }
+
+            if (principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                patientParam = pOpt.map(Patient::id).orElse(principal.getUserId());
+            } else if (principal.isUserInRole("TENANT_ADMIN") && tenantParam == null) {
+                tenantParam = principal.getTenantId();
+            }
+
+            boolean isSuperAdmin = principal.isUserInRole("SUPER_ADMIN");
+            List<PatientGrievance> list = grievanceService.listGrievances(tenantParam, isSuperAdmin, patientParam, doctorParam, statusFilter);
+            sendJson(exchange, 200, GrievanceJsonMapper.listToJson(list));
+        }
+
+        private void handleSubmitGrievance(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String patientIdStr = JsonHelper.getString(body, "patientId");
+            String doctorIdStr = JsonHelper.getString(body, "doctorId");
+            String doctorName = JsonHelper.getString(body, "doctorName");
+            String tenantIdStr = JsonHelper.getString(body, "tenantId");
+            String consultationIdStr = JsonHelper.getString(body, "consultationId");
+            String grievanceType = JsonHelper.getString(body, "grievanceType");
+            String category = JsonHelper.getString(body, "category");
+            Integer rating = JsonHelper.getInt(body, "rating");
+            String title = JsonHelper.getString(body, "title");
+            String description = JsonHelper.getString(body, "description");
+
+            UUID patientId = null;
+            if (patientIdStr != null && !patientIdStr.isBlank()) {
+                try { patientId = UUID.fromString(patientIdStr.trim()); } catch (IllegalArgumentException ignored) {}
+            } else if (principal.isUserInRole("PATIENT")) {
+                Optional<Patient> pOpt = clinicalService.findPatientByLinkedUserId(principal.getUserId());
+                if (pOpt.isPresent()) patientId = pOpt.get().id();
+            }
+
+            if (patientId == null) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"L'identifiant du patient est requis.\"}");
+                return;
+            }
+            if (doctorIdStr == null || doctorIdStr.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"L'identifiant du médecin (doctorId) est requis.\"}");
+                return;
+            }
+            if (title == null || title.isBlank() || description == null || description.isBlank()) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Requête invalide\",\"status\":400,\"detail\":\"Le titre et la description détaillée sont requis.\"}");
+                return;
+            }
+
+            UUID doctorId = UUID.fromString(doctorIdStr.trim());
+            UUID tenantId = (tenantIdStr != null && !tenantIdStr.isBlank()) ? UUID.fromString(tenantIdStr.trim()) : null;
+            UUID consultationId = (consultationIdStr != null && !consultationIdStr.isBlank()) ? UUID.fromString(consultationIdStr.trim()) : null;
+
+            try {
+                PatientGrievance g = grievanceService.submitGrievance(
+                        patientId,
+                        doctorId,
+                        doctorName,
+                        tenantId,
+                        consultationId,
+                        grievanceType != null ? grievanceType : "COMPLAINT",
+                        category != null ? category : "CARE_QUALITY",
+                        rating != null ? rating : 3,
+                        title,
+                        description
+                );
+                sendJson(exchange, 201, GrievanceJsonMapper.grievanceToJson(g));
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+            }
+        }
+
+        private void handleGrievanceAction(HttpExchange exchange, String tail) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String cleanTail = tail.startsWith("/") ? tail.substring(1) : tail;
+            String method = exchange.getRequestMethod();
+
+            if ("GET".equalsIgnoreCase(method)) {
+                Optional<PatientGrievance> opt = Optional.empty();
+                try {
+                    opt = grievanceService.findGrievanceById(UUID.fromString(cleanTail));
+                } catch (IllegalArgumentException ignored) {
+                    opt = grievanceService.findGrievanceByCode(cleanTail);
+                }
+                if (opt.isPresent()) {
+                    sendJson(exchange, 200, GrievanceJsonMapper.grievanceToJson(opt.get()));
+                } else {
+                    sendJson(exchange, 404, "{\"type\":\"https://medscan.org/errors/not-found\",\"title\":\"Non trouvé\",\"status\":404,\"detail\":\"Réclamation introuvable.\"}");
+                }
+            } else if ("PUT".equalsIgnoreCase(method) && cleanTail.contains("/review")) {
+                if (!principal.isUserInRole("TENANT_ADMIN") && !principal.isUserInRole("SUPER_ADMIN")) {
+                    sendJson(exchange, 403, "{\"type\":\"https://medscan.org/errors/forbidden\",\"title\":\"Accès refusé\",\"status\":403,\"detail\":\"Seul l'administrateur de l'hôpital ou le Super Admin peut traiter les réclamations.\"}");
+                    return;
+                }
+
+                String idStr = cleanTail.substring(0, cleanTail.indexOf("/review"));
+                UUID grievanceId = UUID.fromString(idStr);
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+                String status = JsonHelper.getString(body, "status");
+                String adminNotes = JsonHelper.getString(body, "adminNotes");
+                String actionTaken = JsonHelper.getString(body, "actionTaken");
+
+                try {
+                    PatientGrievance reviewed = grievanceService.reviewGrievance(
+                            grievanceId,
+                            principal.getUserId(),
+                            principal.getName(),
+                            status != null ? status : "RESOLVED",
+                            adminNotes,
+                            actionTaken
+                    );
+                    sendJson(exchange, 200, GrievanceJsonMapper.grievanceToJson(reviewed));
+                } catch (Exception e) {
+                    sendJson(exchange, 400, "{\"type\":\"https://medscan.org/errors/bad-request\",\"title\":\"Erreur\",\"status\":400,\"detail\":\"" + JsonHelper.escape(e.getMessage()) + "\"}");
+                }
+            } else {
+                sendJson(exchange, 405, "{\"type\":\"https://medscan.org/errors/method-not-allowed\",\"title\":\"Méthode non autorisée\",\"status\":405,\"detail\":\"Méthode non supportée.\"}");
+            }
+        }
+
+        private void sendHtml(HttpExchange exchange, int statusCode, String htmlContent) throws IOException {
+            byte[] bytes = htmlContent.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(statusCode, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
             }
         }
 

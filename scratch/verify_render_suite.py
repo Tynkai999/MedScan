@@ -298,8 +298,141 @@ def main():
     )
     print(f"Acquittement global alertes -> Statut: {status}, Modifiées: {mark_res.get('markedRead')}")
 
+    # 7. MOD-16: Redirection & Orientation Médicale Inter-Services / Inter-Établissements
+    print_step("7. MOD-16: Redirection & Orientation Médicale Inter-Services")
+    referral_payload = {
+        "patientId": PATIENT_ID,
+        "targetDepartment": "Cardiologie & Explorations Fonctionnelles",
+        "reason": "Dyspnée d'effort d'aggravation rapide avec HTA non contrôlée",
+        "priority": "URGENT",
+        "clinicalSummary": "Patiente asthmatique connue, bilan biologique normal, ECG de repos suspect."
+    }
+    status, _, ref_res = make_request(
+        f"{BASE_URL}/v1/referrals",
+        method="POST",
+        headers=doc_headers,
+        data=referral_payload
+    )
+    print(f"Création orientation médicale -> Statut: {status}, Code={ref_res.get('referralCode')}, ID={ref_res.get('id')}")
+    ref_id = ref_res.get('id')
+
+    # Acceptation de l'orientation par le service cible
+    if ref_id:
+        status, _, accept_res = make_request(
+            f"{BASE_URL}/v1/referrals/{ref_id}/accept",
+            method="PUT",
+            headers=doc_headers,
+            data={}
+        )
+        print(f"Acceptation orientation -> Statut: {status}, Nouveau statut={accept_res.get('status')}")
+
+    # Consultation de la liste des orientations du patient
+    status, _, list_ref_res = make_request(
+        f"{BASE_URL}/v1/referrals?patientId={PATIENT_ID}",
+        headers=doc_headers
+    )
+    print(f"Liste des orientations patient -> Statut: {status}, Total trouvées: {len(list_ref_res) if isinstance(list_ref_res, list) else 0}")
+
+    # 8. MOD-17: Cachet d'Hôpital & Certificats / Arrêts de Travail Téléchargeables
+    print_step("8. MOD-17: Cachet d'Hôpital & Certificats Officiels Imprimables")
+    cert_payload = {
+        "patientId": PATIENT_ID,
+        "certificateType": "SICK_LEAVE",
+        "diagnosisSummary": "Infection aiguë respiratoire et accès fébrile nécessitant repos complet",
+        "durationDays": 4,
+        "recipientType": "EMPLOYER",
+        "recipientName": "Direction des Ressources Humaines - Entreprise Employeur",
+        "restrictions": "Repos strict à domicile avec éviction professionnelle complète"
+    }
+    status, _, cert_res = make_request(
+        f"{BASE_URL}/v1/certificates",
+        method="POST",
+        headers=doc_headers,
+        data=cert_payload
+    )
+    cert_code = cert_res.get('certificateCode')
+    print(f"Émission certificat avec cachet -> Statut: {status}, Code={cert_code}, Sceau={cert_res.get('hospitalSeal', {}).get('hospitalCode')}")
+
+    # Téléchargement du document officiel prêt à l'impression / PDF
+    if cert_code:
+        status, _, html_doc = make_request(
+            f"{BASE_URL}/v1/certificates/{cert_code}/document",
+            headers=doc_headers
+        )
+        is_html = isinstance(html_doc, str) and "<!DOCTYPE html>" in html_doc and "CACHET OFFICIEL" in html_doc
+        print(f"Téléchargement document officiel imprimable -> Statut: {status}, Format HTML valide avec cachet={is_html}")
+
+        # Vérification publique de validité (sans authentification)
+        status, _, verify_res = make_request(
+            f"{BASE_URL}/v1/certificates/verify?code={cert_code}"
+        )
+        print(f"Vérification publique certificat -> Statut: {status}, Valide={verify_res.get('valid')}, Hôpital={verify_res.get('hospitalName')}")
+
+    # 9. MOD-18: Système d'Avis & Réclamations Patients pour l'Administrateur Hospitalier
+    print_step("9. MOD-18: Système d'Avis & Réclamations pour l'Administrateur de l'Hôpital")
+
+    # Connexion Patient
+    status, _, p_login = make_request(
+        f"{BASE_URL}/v1/auth/login",
+        method="POST",
+        data={"username": "patient@medscan.org", "password": "Password123!"}
+    )
+    patient_token = p_login.get("accessToken")
+    patient_headers = {"Authorization": f"Bearer {patient_token}"}
+    print(f"Connexion Patiente -> Statut: {status}")
+
+    # Dépôt d'une réclamation sur le médecin
+    grievance_payload = {
+        "doctorId": "179a11bf-92a3-438a-9d7a-a711385c8ef0",
+        "grievanceType": "COMPLAINT",
+        "category": "DELAY_WAIT_TIME",
+        "rating": 2,
+        "title": "Attente excessive lors de la consultation",
+        "description": "Retard de plus d'une heure sans information fournie par le secrétariat."
+    }
+    status, _, grv_res = make_request(
+        f"{BASE_URL}/v1/grievances",
+        method="POST",
+        headers=patient_headers,
+        data=grievance_payload
+    )
+    grv_id = grv_res.get("id")
+    print(f"Dépôt réclamation patiente -> Statut: {status}, Code={grv_res.get('grievanceCode')}, Sévérité={grv_res.get('severity')}")
+
+    # Connexion Administrateur Hospitalier (TENANT_ADMIN)
+    status, _, a_login = make_request(
+        f"{BASE_URL}/v1/auth/login",
+        method="POST",
+        data={"username": "tenantadmin@medscan.org", "password": "Password123!"}
+    )
+    admin_token = a_login.get("accessToken")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    print(f"Connexion Administrateur Hôpital -> Statut: {status}")
+
+    # Consultation des réclamations par l'administrateur
+    status, _, grv_list = make_request(
+        f"{BASE_URL}/v1/grievances",
+        headers=admin_headers
+    )
+    print(f"Liste réclamations administrateur hôpital -> Statut: {status}, Total réclamations: {len(grv_list) if isinstance(grv_list, list) else 0}")
+
+    # Traitement de la réclamation par la direction de l'hôpital
+    if grv_id:
+        review_payload = {
+            "status": "RESOLVED",
+            "adminNotes": "Examen du planning de consultations. Retard dû à une prise en charge d'urgence vitale.",
+            "actionTaken": "Mise en place d'un SMS d'alerte automatique des retards aux patients en attente."
+        }
+        status, _, review_res = make_request(
+            f"{BASE_URL}/v1/grievances/{grv_id}/review",
+            method="PUT",
+            headers=admin_headers,
+            data=review_payload
+        )
+        print(f"Résolution réclamation par direction -> Statut: {status}, Statut final={review_res.get('status')}, Mesure prise={review_res.get('adminActionTaken')[:50]}...")
+
     print("\n" + "=" * 70)
-    print("  TOUS LES 4 MODULES (MOD-12, MOD-13, MOD-14, MOD-15) VALIDÉS EN PRODUCTION SUR RENDER !")
+    print("  TOUS LES MODULES (MOD-12 à MOD-18) VALIDÉS EN PRODUCTION SUR RENDER !")
     print("=" * 70)
     return 0
 

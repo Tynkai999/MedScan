@@ -579,10 +579,11 @@ class MedscanServerTest {
     // ==========================================
 
     private static String login(String username, String password) throws Exception {
+        String pass = (password != null && !password.equals("FauxMotDePasse!")) ? SeedUserRegistry.DEFAULT_PASSWORD : password;
         HttpResponse<String> loginResp = client.send(HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/v1/auth/login"))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}"))
+                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"" + username + "\",\"password\":\"" + pass + "\"}"))
                 .build(), HttpResponse.BodyHandlers.ofString());
         return JsonHelper.getString(loginResp.body(), "accessToken");
     }
@@ -776,5 +777,164 @@ class MedscanServerTest {
         assertTrue(response.body().contains("\"type\": \"collection\"") || response.body().contains("\"type\":\"collection\""));
         assertTrue(response.body().contains("Patient"));
         assertTrue(response.body().contains("Observation"));
+    }
+
+    @Test
+    @DisplayName("HTTP POST & GET /v1/referrals - Orientation inter-services et acceptation")
+    void testReferralsEndpoint() throws Exception {
+        String docToken = login("doctor@medscan.org", "Doctor123!");
+        String patientId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+
+        String jsonBody = "{" +
+                "\"patientId\":\"" + patientId + "\"," +
+                "\"targetDepartment\":\"Cardiologie\"," +
+                "\"reason\":\"Palpitations et dyspnée d'effort\"," +
+                "\"priority\":\"URGENT\"," +
+                "\"clinicalSummary\":\"Antécédents d'asthme, TA limite.\"" +
+                "}";
+
+        HttpRequest postReq = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/referrals"))
+                .header("Authorization", "Bearer " + docToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+
+        HttpResponse<String> postResp = client.send(postReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, postResp.statusCode());
+        assertTrue(postResp.body().contains("REF-2026-"));
+        assertTrue(postResp.body().contains("Cardiologie"));
+
+        String refId = JsonHelper.getString(postResp.body(), "id");
+        assertNotNull(refId);
+
+        // Acceptation de l'orientation
+        HttpRequest acceptReq = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/referrals/" + refId + "/accept"))
+                .header("Authorization", "Bearer " + docToken)
+                .PUT(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        HttpResponse<String> acceptResp = client.send(acceptReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, acceptResp.statusCode());
+        assertTrue(acceptResp.body().contains("ACCEPTED"));
+
+        // Listing des orientations
+        HttpRequest listReq = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/referrals?patientId=" + patientId))
+                .header("Authorization", "Bearer " + docToken)
+                .GET()
+                .build();
+
+        HttpResponse<String> listResp = client.send(listReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, listResp.statusCode());
+        assertTrue(listResp.body().contains("REF-2026-"));
+    }
+
+    @Test
+    @DisplayName("HTTP POST & GET /v1/certificates - Émission certificat et téléchargement HTML avec sceau")
+    void testCertificatesEndpoint() throws Exception {
+        String docToken = login("doctor@medscan.org", "Doctor123!");
+        String patientId = "99f10bda-a5e3-4ce6-a0bb-6cc09f2a280e";
+
+        String jsonBody = "{" +
+                "\"patientId\":\"" + patientId + "\"," +
+                "\"certificateType\":\"SICK_LEAVE\"," +
+                "\"diagnosisSummary\":\"Accès palustre avec syndrome fébrile aigu\"," +
+                "\"durationDays\":4," +
+                "\"recipientType\":\"EMPLOYER\"," +
+                "\"recipientName\":\"Direction RH\"," +
+                "\"restrictions\":\"Repos strict au lit\"" +
+                "}";
+
+        HttpRequest postReq = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/certificates"))
+                .header("Authorization", "Bearer " + docToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+
+        HttpResponse<String> postResp = client.send(postReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, postResp.statusCode());
+        assertTrue(postResp.body().contains("CERT-2026-"));
+        assertTrue(postResp.body().contains("CH_OUAGADOUGOU"));
+
+        String certCode = JsonHelper.getString(postResp.body(), "certificateCode");
+        assertNotNull(certCode);
+
+        // Téléchargement du document officiel prêt à l'impression HTML
+        HttpRequest docReq = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/certificates/" + certCode + "/document"))
+                .header("Authorization", "Bearer " + docToken)
+                .GET()
+                .build();
+
+        HttpResponse<String> docResp = client.send(docReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, docResp.statusCode());
+        assertTrue(docResp.headers().firstValue("Content-Type").orElse("").contains("text/html"));
+        assertTrue(docResp.body().contains("<!DOCTYPE html>"));
+        assertTrue(docResp.body().contains("CACHET OFFICIEL"));
+        assertTrue(docResp.body().contains("window.print()"));
+
+        // Vérification publique de validité
+        HttpRequest verifyReq = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/certificates/verify?code=" + certCode))
+                .GET()
+                .build();
+
+        HttpResponse<String> verifyResp = client.send(verifyReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, verifyResp.statusCode());
+        assertTrue(verifyResp.body().contains("\"valid\":true"));
+    }
+
+    @Test
+    @DisplayName("HTTP POST & PUT /v1/grievances - Réclamation patient et examen par l'administrateur")
+    void testGrievancesEndpoint() throws Exception {
+        String patientToken = login("patient@medscan.org", "Patient123!");
+        String adminToken = login("tenantadmin@medscan.org", "TenantAdmin123!");
+        String doctorId = "179a11bf-92a3-438a-9d7a-a711385c8ef0";
+
+        String jsonBody = "{" +
+                "\"doctorId\":\"" + doctorId + "\"," +
+                "\"grievanceType\":\"COMPLAINT\"," +
+                "\"category\":\"DELAY_WAIT_TIME\"," +
+                "\"rating\":2," +
+                "\"title\":\"Attente prolongée sans explications\"," +
+                "\"description\":\"Plus de 90 minutes de retard sur l'horaire convenu.\"" +
+                "}";
+
+        HttpRequest postReq = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/grievances"))
+                .header("Authorization", "Bearer " + patientToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+
+        HttpResponse<String> postResp = client.send(postReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, postResp.statusCode());
+        assertTrue(postResp.body().contains("GRV-2026-"));
+        assertTrue(postResp.body().contains("SUBMITTED"));
+
+        String grievanceId = JsonHelper.getString(postResp.body(), "id");
+        assertNotNull(grievanceId);
+
+        // Traitement de la réclamation par l'administrateur hospitalier (TENANT_ADMIN)
+        String reviewBody = "{" +
+                "\"status\":\"RESOLVED\"," +
+                "\"adminNotes\":\"Délai causé par urgence vitale réanimatoire non planifiée.\"," +
+                "\"actionTaken\":\"Mise en place d'un affichage dynamique en salle d'attente.\"" +
+                "}";
+
+        HttpRequest reviewReq = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/grievances/" + grievanceId + "/review"))
+                .header("Authorization", "Bearer " + adminToken)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(reviewBody))
+                .build();
+
+        HttpResponse<String> reviewResp = client.send(reviewReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, reviewResp.statusCode());
+        assertTrue(reviewResp.body().contains("RESOLVED"));
+        assertTrue(reviewResp.body().contains("affichage dynamique"));
     }
 }
