@@ -37,6 +37,42 @@ public final class MessagingJsonMapper {
         return "[" + list.stream().map(MessagingJsonMapper::messageToJson).collect(Collectors.joining(",")) + "]";
     }
 
+    public static String conversationSummaryToJson(MessagingNotificationService.ConversationSummary c) {
+        if (c == null) return "null";
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        sb.append("\"id\":\"").append(c.id()).append("\",");
+        sb.append("\"participantId\":\"").append(c.participantId()).append("\",");
+        sb.append("\"participantName\":\"").append(JsonHelper.escape(c.participantName())).append("\",");
+        sb.append("\"participantRole\":\"").append(JsonHelper.escape(c.participantRole())).append("\",");
+        sb.append("\"unreadCount\":").append(c.unreadCount()).append(",");
+        sb.append("\"lastMessage\":").append(messageToJson(c.lastMessage()));
+        sb.append("}");
+        return sb.toString();
+    }
+
+    public static String conversationSummariesListToJson(List<MessagingNotificationService.ConversationSummary> list) {
+        if (list == null) return "[]";
+        return "[" + list.stream().map(MessagingJsonMapper::conversationSummaryToJson).collect(Collectors.joining(",")) + "]";
+    }
+
+    public static String contactToJson(MessagingNotificationService.MessagingContact c) {
+        if (c == null) return "null";
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        sb.append("\"id\":\"").append(c.id()).append("\",");
+        sb.append("\"name\":\"").append(JsonHelper.escape(c.name())).append("\",");
+        sb.append("\"role\":\"").append(JsonHelper.escape(c.role())).append("\",");
+        sb.append("\"details\":\"").append(JsonHelper.escape(c.details())).append("\"");
+        sb.append("}");
+        return sb.toString();
+    }
+
+    public static String contactsListToJson(List<MessagingNotificationService.MessagingContact> list) {
+        if (list == null) return "[]";
+        return "[" + list.stream().map(MessagingJsonMapper::contactToJson).collect(Collectors.joining(",")) + "]";
+    }
+
     public static String notificationToJson(InAppNotification n) {
         if (n == null) return "null";
         StringBuilder sb = new StringBuilder();

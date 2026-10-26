@@ -388,6 +388,10 @@ public class MedscanServer {
                     handleEpidemiologySummary(exchange);
                 } else if (subPath.equals("/v1/epidemiology/dhis2-export") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handleEpidemiologyDhis2Export(exchange);
+                } else if ((subPath.equals("/v1/messages/conversations") || subPath.equals("/v1/conversations")) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListConversations(exchange);
+                } else if ((subPath.equals("/v1/messages/contacts") || subPath.equals("/v1/conversations/contacts")) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    handleListContacts(exchange);
                 } else if (subPath.equals("/v1/messages") && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     handleListMessages(exchange);
                 } else if (subPath.equals("/v1/messages") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -2422,6 +2426,25 @@ public class MedscanServer {
         // ==========================================
         // MESSAGERIE SÉCURISÉE (MOD-15)
         // ==========================================
+
+        private void handleListConversations(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            var list = messagingNotificationService.listConversationsForUser(principal.getUserId());
+            sendJson(exchange, 200, MessagingJsonMapper.conversationSummariesListToJson(list));
+        }
+
+        private void handleListContacts(HttpExchange exchange) throws IOException {
+            MedscanSecurityContext context = authenticate(exchange);
+            if (context == null) return;
+            MedscanPrincipal principal = (MedscanPrincipal) context.getUserPrincipal();
+
+            String role = principal.getRoles().isEmpty() ? "PATIENT" : principal.getRoles().iterator().next();
+            var contacts = messagingNotificationService.listEligibleContacts(principal.getUserId(), role);
+            sendJson(exchange, 200, MessagingJsonMapper.contactsListToJson(contacts));
+        }
 
         private void handleListMessages(HttpExchange exchange) throws IOException {
             MedscanSecurityContext context = authenticate(exchange);

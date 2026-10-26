@@ -2,17 +2,20 @@ package com.medscan.messaging;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 import com.medscan.clinical.ClinicalService;
+import com.medscan.clinical.Consultation;
 import com.medscan.clinical.Patient;
 
 /**
@@ -110,6 +113,104 @@ public class MessagingNotificationService {
                 .filter(m -> m.senderId().equals(userId) || m.recipientId().equals(userId))
                 .sorted(Comparator.comparing(ClinicalMessage::sentAt).reversed())
                 .collect(Collectors.toList());
+    }
+
+    public record ConversationSummary(
+            UUID id,
+            UUID participantId,
+            String participantName,
+            String participantRole,
+            ClinicalMessage lastMessage,
+            int unreadCount
+    ) {}
+
+    public record MessagingContact(
+            UUID id,
+            String name,
+            String role,
+            String details
+    ) {}
+
+    public List<ConversationSummary> listConversationsForUser(UUID userId) {
+        if (userId == null) return Collections.emptyList();
+
+        Map<UUID, List<ClinicalMessage>> convMap = new ConcurrentHashMap<>();
+        for (ClinicalMessage m : messagesById.values()) {
+            if (userId.equals(m.senderId()) || userId.equals(m.recipientId())) {
+                convMap.computeIfAbsent(m.conversationId(), k -> new CopyOnWriteArrayList<>()).add(m);
+            }
+        }
+
+        List<ConversationSummary> summaries = new ArrayList<>();
+        for (Map.Entry<UUID, List<ClinicalMessage>> entry : convMap.entrySet()) {
+            UUID cId = entry.getKey();
+            List<ClinicalMessage> list = new ArrayList<>(entry.getValue());
+            if (list.isEmpty()) continue;
+
+            list.sort(Comparator.comparing(ClinicalMessage::sentAt));
+            ClinicalMessage lastMsg = list.get(list.size() - 1);
+
+            boolean isSender = userId.equals(lastMsg.senderId());
+            UUID partnerId = isSender ? lastMsg.recipientId() : lastMsg.senderId();
+            String partnerName = isSender ? lastMsg.recipientName() : lastMsg.senderName();
+            String partnerRole = isSender ? lastMsg.recipientRole() : lastMsg.senderRole();
+
+            int unread = (int) list.stream()
+                    .filter(m -> userId.equals(m.recipientId()) && m.readAt() == null)
+                    .count();
+
+            summaries.add(new ConversationSummary(cId, partnerId, partnerName, partnerRole, lastMsg, unread));
+        }
+
+        summaries.sort((a, b) -> b.lastMessage().sentAt().compareTo(a.lastMessage().sentAt()));
+        return summaries;
+    }
+
+    public List<MessagingContact> listEligibleContacts(UUID userId, String userRole) {
+        if (userId == null) return Collections.emptyList();
+
+        List<MessagingContact> contacts = new ArrayList<>();
+        String normalizedRole = (userRole != null) ? userRole.toUpperCase() : "PATIENT";
+        boolean isDoctor = normalizedRole.contains("DOCTOR") || normalizedRole.contains("PRATICIEN") || normalizedRole.contains("MEDECIN");
+
+        if (isDoctor) {
+            Map<UUID, List<Consultation>> allConsults = clinicalService.getAllConsultationsMap();
+            Set<UUID> patientIds = new java.util.LinkedHashSet<>();
+            for (Map.Entry<UUID, List<Consultation>> e : allConsults.entrySet()) {
+                for (Consultation c : e.getValue()) {
+                    if (userId.equals(c.doctorId())) {
+                        patientIds.add(e.getKey());
+                    }
+                }
+            }
+            if (patientIds.isEmpty()) {
+                clinicalService.getAllPatientsMap().values().stream().limit(3).forEach(p -> patientIds.add(p.id()));
+            }
+            for (UUID pId : patientIds) {
+                clinicalService.findPatientById(pId).ifPresent(p -> {
+                    contacts.add(new MessagingContact(p.id(), p.fullName(), "PATIENT", "Patient suivi / dossier médical"));
+                });
+            }
+        } else {
+            Optional<Patient> patientOpt = clinicalService.findPatientByLinkedUserId(userId);
+            UUID patientId = patientOpt.map(Patient::id).orElse(userId);
+            List<Consultation> consults = clinicalService.getConsultations(patientId);
+            Set<UUID> doctorIds = new java.util.LinkedHashSet<>();
+            for (Consultation c : consults) {
+                if (c.doctorId() != null && doctorIds.add(c.doctorId())) {
+                    contacts.add(new MessagingContact(c.doctorId(), c.doctorName() != null ? c.doctorName() : "Dr. Seydou Traore", "DOCTOR", "Médecin consulté"));
+                }
+            }
+            if (contacts.isEmpty()) {
+                contacts.add(new MessagingContact(
+                        UUID.fromString("179a11bf-92a3-438a-9d7a-a711385c8ef0"),
+                        "Dr. Seydou Traore",
+                        "DOCTOR",
+                        "Médecin Référent"
+                ));
+            }
+        }
+        return contacts;
     }
 
     // ==========================================

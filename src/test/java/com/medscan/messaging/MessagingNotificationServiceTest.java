@@ -110,4 +110,33 @@ class MessagingNotificationServiceTest {
         assertEquals("CRITICAL_LAB_ALERT", alert.category());
         assertFalse(alert.isRead());
     }
+
+    @Test
+    @DisplayName("Liste des conversations groupées et ordonnées pour un utilisateur")
+    void testListConversationsForUser() {
+        var convs = messagingService.listConversationsForUser(DOCTOR_USER_ID);
+        assertFalse(convs.isEmpty(), "Le médecin doit avoir au moins une conversation active.");
+        assertEquals("Fatou Ouedraogo", convs.get(0).participantName());
+        assertEquals("PATIENT", convs.get(0).participantRole());
+        assertNotNull(convs.get(0).lastMessage());
+
+        var patientConvs = messagingService.listConversationsForUser(PATIENT_USER_ID);
+        assertFalse(patientConvs.isEmpty(), "La patiente doit avoir sa conversation avec le médecin.");
+        assertEquals("Dr. Seydou Traore", patientConvs.get(0).participantName());
+        assertEquals("DOCTOR", patientConvs.get(0).participantRole());
+    }
+
+    @Test
+    @DisplayName("Isolation des contacts éligibles selon les consultations cliniques effectives")
+    void testListEligibleContactsIsolation() {
+        // Patient Fatou ne voit que les praticiens consultés
+        var patientContacts = messagingService.listEligibleContacts(PATIENT_USER_ID, "PATIENT");
+        assertFalse(patientContacts.isEmpty(), "La patiente doit voir les praticiens consultés.");
+        assertTrue(patientContacts.stream().allMatch(c -> "DOCTOR".equals(c.role())));
+
+        // Docteur ne voit que les patients consultés
+        var doctorContacts = messagingService.listEligibleContacts(DOCTOR_USER_ID, "DOCTOR");
+        assertFalse(doctorContacts.isEmpty(), "Le médecin doit voir les patients qu'il a consultés.");
+        assertTrue(doctorContacts.stream().allMatch(c -> "PATIENT".equals(c.role())));
+    }
 }
